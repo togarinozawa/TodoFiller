@@ -1,0 +1,6 @@
+{
+  "version_code": 33,
+  "version_name": "33.0",
+  "url": "https://raw.githubusercontent.com/togarinozawa/TodoFiller/dist/skimas.apk",
+  "notes": "サーバーを畳みました。更新の確認先がGitHubに変わり、通信はそれ1本だけになります。データはそのままです。"
+}

@@ -88,6 +88,8 @@ class NotionApi(private val token: String) {
      * 判断が効いてしまい、更新が無かっただけのタスクを端末から全部消す。
      */
     fun query(dataSourceId: String, since: String? = null): List<NotionTask> {
+        // 既定ではゴミ箱のページは返らない。消された判断は
+        // 「全件に出てこなかった」側で効くので、取りに行かなくてよい
         val out = ArrayList<NotionTask>()
         var cursor: String? = null
         do {
@@ -100,7 +102,8 @@ class NotionApi(private val token: String) {
                         .put("last_edited_time", JSONObject().put("after", since))
                 )
             }
-            val res = request("PATCH", "$BASE/data_sources/$dataSourceId/query", body)
+            // **POST。**データソース版の問い合わせはPOSTで、PATCHだと405が返る
+            val res = request("POST", "$BASE/data_sources/$dataSourceId/query", body)
             val results = res.optJSONArray("results") ?: JSONArray()
             for (i in 0 until results.length()) {
                 val page = results.optJSONObject(i) ?: continue
@@ -171,7 +174,9 @@ class NotionApi(private val token: String) {
             val text = stream?.let {
                 BufferedReader(InputStreamReader(it, Charsets.UTF_8)).use { r -> r.readText() }
             }.orEmpty()
-            if (code !in 200..299) throw ApiException(code, describe(code, text))
+            if (code !in 200..299) {
+                throw ApiException(code, describe(code, text), friendly = true)
+            }
             return if (text.isEmpty()) JSONObject() else JSONObject(text)
         } finally {
             conn.disconnect()

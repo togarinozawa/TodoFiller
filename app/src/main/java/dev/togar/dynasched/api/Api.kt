@@ -11,7 +11,15 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
 
-class ApiException(val code: Int, message: String) : Exception(message)
+/**
+ * [friendly] は「このメッセージはもう日本語で、そのまま見せてよい」印。
+ * 付いていない物は本文が生のJSONやHTMLなので、[Api.friendlyMessage] が言い換える。
+ */
+class ApiException(
+    val code: Int,
+    message: String,
+    val friendly: Boolean = false
+) : Exception(message)
 
 /**
  * バックグラウンド実行と、更新の確認。
@@ -57,6 +65,9 @@ object Api {
      * 生の `failed to connect to ... (port 443)` を出さないため。
      */
     fun friendlyMessage(e: Exception): String = when {
+        // 呼び出し側が既に日本語にしている物は、そのまま見せる。
+        // ここで言い換えると**何が起きたのか分からなくなる**（実際にそれで一度詰まった）
+        e is ApiException && e.friendly && !e.message.isNullOrBlank() -> e.message!!
         e is ApiException && e.code == 404 -> "対象が見つかりませんでした"
         e is ApiException -> "取得できませんでした (${e.code})"
         e is java.net.SocketTimeoutException -> "通信がタイムアウトしました"

@@ -217,7 +217,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:background="@color/surface"
-            android:hint="置き場所にするNotionページのURL"
+            android:hint="NotionページまたはデータベースのURL"
             android:importantForAutofill="no"
             android:inputType="textUri"
             android:padding="12dp"
@@ -225,14 +225,25 @@
             android:textColorHint="@color/on_bg_dim"
             android:textSize="13sp" />
 
+        <!-- 既にあるDBへ繋ぎ直す方を主にしてある。作り直すと空のDBに向いてしまい、
+             前のDBの中身が行き場を失うため（実際にそれで参らせた） -->
         <Button
-            android:id="@+id/notionConnectButton"
+            android:id="@+id/notionOpenButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:backgroundTint="@color/primary"
-            android:text="接続してデータベースを作る"
+            android:text="このデータベースに繋ぐ"
             android:textColor="@color/white" />
+
+        <Button
+            android:id="@+id/notionConnectButton"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="新しくデータベースを作る"
+            android:textColor="@color/on_bg_dim" />
 
         <Button
             android:id="@+id/notionSyncButton"

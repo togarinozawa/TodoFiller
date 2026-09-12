@@ -99,6 +99,7 @@ class SettingsFragment : Fragment() {
         val ctx = requireContext()
         val tokenInput = root.findViewById<android.widget.EditText>(R.id.notionTokenInput)
         val pageInput = root.findViewById<android.widget.EditText>(R.id.notionPageInput)
+        val openBtn = root.findViewById<Button>(R.id.notionOpenButton)
         val connectBtn = root.findViewById<Button>(R.id.notionConnectButton)
         val syncBtn = root.findViewById<Button>(R.id.notionSyncButton)
         val disconnectBtn = root.findViewById<Button>(R.id.notionDisconnectButton)
@@ -106,11 +107,10 @@ class SettingsFragment : Fragment() {
 
         fun refresh() {
             val ready = Prefs.notionReady(ctx)
-            connectBtn.text = if (ready) "作り直す（今のデータベースは残ります）"
-            else "接続してデータベースを作る"
             syncBtn.isEnabled = ready
             disconnectBtn.visibility = if (ready) View.VISIBLE else View.GONE
-            pageInput.visibility = if (ready) View.GONE else View.VISIBLE
+            // URL欄は繋いだ後も出したままにする。**繋ぎ先を変えたい時に
+            // 「作り直す」しか道が無いと、空のDBに向いてしまう**
             val last = Prefs.notionLastResult(ctx)
             status.text = when {
                 !ready -> "未接続。トークンと、置き場所にするページのURLを入れてください"
@@ -123,35 +123,66 @@ class SettingsFragment : Fragment() {
         if (Prefs.notionToken(ctx).isNotEmpty()) tokenInput.setText(Prefs.notionToken(ctx))
         refresh()
 
-        connectBtn.setOnClickListener {
+        /** 入力からトークンとIDを取る。駄目なら理由を出して null */
+        fun readInputs(): Pair<String, String>? {
             val token = tokenInput.text.toString().trim()
             if (token.isEmpty()) {
                 Toast.makeText(ctx, "トークンを入れてください", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+                return null
             }
-            val pageId = dev.togar.dynasched.sync.NotionLink.pageIdFrom(pageInput.text.toString())
-            if (pageId == null) {
-                Toast.makeText(ctx, "ページのURLが読めません。Notionで「リンクをコピー」した物を貼ってください",
+            val id = dev.togar.dynasched.sync.NotionLink.pageIdFrom(pageInput.text.toString())
+            if (id == null) {
+                Toast.makeText(ctx, "URLが読めません。Notionで「リンクをコピー」した物を貼ってください",
                     Toast.LENGTH_LONG).show()
-                return@setOnClickListener
+                return null
             }
+            return token to id
+        }
+
+        fun apply(label: String, work: (dev.togar.dynasched.sync.NotionApi, String) -> Pair<String, String>) {
+            val (token, id) = readInputs() ?: return
             Prefs.setNotionToken(ctx, token)
-            status.text = "接続しています…"
-            connectBtn.isEnabled = false
+            status.text = "$label しています…"
+            openBtn.isEnabled = false; connectBtn.isEnabled = false
             Api.async({
                 val api = dev.togar.dynasched.sync.NotionApi(token)
                 api.whoAmI()   // 先にトークンだけ試す。作りかけの物を残さないため
-                api.createTaskDatabase(pageId, "スキマスのタスク")
+                work(api, id)
             }, { (dbId, dsId) ->
                 Prefs.setNotionTarget(ctx, dbId, dsId)
-                connectBtn.isEnabled = true
-                Toast.makeText(ctx, "繋がりました。最初の同期をします", Toast.LENGTH_SHORT).show()
+                openBtn.isEnabled = true; connectBtn.isEnabled = true
                 refresh()
                 syncNow(status)
             }, { e ->
-                connectBtn.isEnabled = true
+                openBtn.isEnabled = true; connectBtn.isEnabled = true
                 status.text = "失敗: " + Api.friendlyMessage(e)
             })
+        }
+
+        // 既にあるDBへ繋ぐ。**作り直しより先に置いてある**
+        openBtn.setOnClickListener {
+            apply("接続") { api, id -> api.openExistingDatabase(id) }
+        }
+
+        connectBtn.setOnClickListener {
+            // 繋がっている時は必ず訊く。押し間違いで空のDBに向くと、
+            // 前のDBの中身が行き場を失う
+            if (!Prefs.notionReady(ctx)) {
+                apply("作成") { api, id -> api.createTaskDatabase(id, "スキマスのタスク") }
+                return@setOnClickListener
+            }
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle("新しく作りますか")
+                .setMessage(
+                    "いま繋がっているデータベースから離れて、空のものを新しく作ります。" +
+                        "前のデータベースは残りますが、そちらの中身は取り込まれなくなります。" +
+                        "繋ぎ先を変えたいだけなら、上の「このデータベースに繋ぐ」を使ってください。"
+                )
+                .setPositiveButton("新しく作る") { _, _ ->
+                    apply("作成") { api, id -> api.createTaskDatabase(id, "スキマスのタスク") }
+                }
+                .setNegativeButton("やめる", null)
+                .show()
         }
 
         syncBtn.setOnClickListener { syncNow(status) }

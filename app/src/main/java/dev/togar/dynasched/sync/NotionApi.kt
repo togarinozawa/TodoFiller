@@ -72,6 +72,45 @@ class NotionApi(private val token: String) {
         return dbId to dsId
     }
 
+    /**
+     * **既にあるデータベースに繋ぎ直す。**返すのは (databaseId, dataSourceId)。
+     *
+     * 作り直すと空のDBに向いてしまい、前のDBの中身が行き場を失う。
+     * 別端末から使う時や、繋ぎ先を見失った時はこちらを使う。
+     *
+     * スキマス以外が作ったDBでも、足りない列はこちらで足すので通る。
+     */
+    fun openExistingDatabase(databaseId: String): Pair<String, String> {
+        val db = request("GET", "$BASE/databases/$databaseId", null)
+        val dsId = firstDataSourceId(db)
+        if (dsId.isEmpty()) throw ApiException(0, "データソースが見つかりませんでした")
+        ensureSchema(dsId)
+        return databaseId to dsId
+    }
+
+    /**
+     * 足りない列を足す。既にある列には触らない（利用者が広げた設定を壊さないため）。
+     * 「親タスク」は自分自身を指すので、ここで初めて相手のIDが分かる。
+     */
+    private fun ensureSchema(dataSourceId: String) {
+        val ds = request("GET", "$BASE/data_sources/$dataSourceId", null)
+        val have = ds.optJSONObject("properties") ?: JSONObject()
+        val missing = JSONObject()
+        val wanted = NotionMap.initialSchema()
+        for (key in wanted.keys()) {
+            // title は必ず既にある（名前が違っていても作り直さない）
+            if (key == NotionMap.NAME || have.has(key)) continue
+            missing.put(key, wanted.get(key))
+        }
+        if (!have.has(NotionMap.PARENT)) {
+            val rel = NotionMap.parentRelationPatch(dataSourceId).getJSONObject("properties")
+            missing.put(NotionMap.PARENT, rel.get(NotionMap.PARENT))
+        }
+        if (missing.length() == 0) return
+        request("PATCH", "$BASE/data_sources/$dataSourceId",
+            JSONObject().put("properties", missing))
+    }
+
     /** データベースIDからデータソースIDを引く */
     fun dataSourceOf(databaseId: String): String =
         firstDataSourceId(request("GET", "$BASE/databases/$databaseId", null))

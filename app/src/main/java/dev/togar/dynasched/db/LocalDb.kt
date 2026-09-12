@@ -86,6 +86,17 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
                 sort_order INTEGER DEFAULT 0
             )"""
         )
+        /**
+         * 端末で消したタスクの墓標。行ごと消えるので hobby_tasks からは辿れず、
+         * **これが無いと消したタスクが次の同期でNotionから戻ってくる。**
+         * Notion側を畳めたら消す。
+         */
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS notion_tombstones (
+                page_id TEXT PRIMARY KEY,
+                deleted_at TEXT DEFAULT (datetime('now','localtime'))
+            )"""
+        )
         migrate(db)
     }
 
@@ -113,12 +124,19 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
 
     companion object {
         private const val NAME = "skimas.db"
-        /** 2: hobby_tasks.sort_order（手動の並び順） / 3: hobby_tasks.tags */
-        private const val VERSION = 3
+        /**
+         * 2: hobby_tasks.sort_order（手動の並び順） / 3: hobby_tasks.tags
+         * 4: Notion同期の対応付け（notion_page_id・dirty）と notion_tombstones
+         */
+        private const val VERSION = 4
 
         /** (テーブル, 列, 定義) */
         private val MIGRATIONS = listOf(
             Triple("hobby_tasks", "sort_order", "INTEGER DEFAULT 0"),
+            // 対応するNotionページ。空なら端末で作られてまだ送っていない
+            Triple("hobby_tasks", "notion_page_id", "TEXT DEFAULT ''"),
+            // 端末で編集したがまだ押し返せていない（圏外など）
+            Triple("hobby_tasks", "dirty", "INTEGER DEFAULT 0"),
             Triple("hobby_tasks", "tags", "TEXT DEFAULT ''")
         )
 

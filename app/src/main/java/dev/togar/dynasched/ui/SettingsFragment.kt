@@ -80,7 +80,107 @@ class SettingsFragment : Fragment() {
             }
         }
 
+        setupNotion(root)
+
         return root
+    }
+
+    // ---- Notion同期 ----
+
+    /**
+     * 繋ぐのは2段階。**トークンだけでは足りない。**Notion側でページを
+     * インテグレーションに接続しておかないと、権限が無くて何も見えない
+     * （その場合APIは404を返すので、迷わないようにそう案内している）。
+     *
+     * データベースは自分で作る。列を8つ手で作らせるより確実で、
+     * 列名の食い違いという一番だるい事故も起きない。
+     */
+    private fun setupNotion(root: View) {
+        val ctx = requireContext()
+        val tokenInput = root.findViewById<android.widget.EditText>(R.id.notionTokenInput)
+        val pageInput = root.findViewById<android.widget.EditText>(R.id.notionPageInput)
+        val connectBtn = root.findViewById<Button>(R.id.notionConnectButton)
+        val syncBtn = root.findViewById<Button>(R.id.notionSyncButton)
+        val disconnectBtn = root.findViewById<Button>(R.id.notionDisconnectButton)
+        val status = root.findViewById<TextView>(R.id.notionStatusText)
+
+        fun refresh() {
+            val ready = Prefs.notionReady(ctx)
+            connectBtn.text = if (ready) "作り直す（今のデータベースは残ります）"
+            else "接続してデータベースを作る"
+            syncBtn.isEnabled = ready
+            disconnectBtn.visibility = if (ready) View.VISIBLE else View.GONE
+            pageInput.visibility = if (ready) View.GONE else View.VISIBLE
+            val last = Prefs.notionLastResult(ctx)
+            status.text = when {
+                !ready -> "未接続。トークンと、置き場所にするページのURLを入れてください"
+                last.isEmpty() -> "接続済み。まだ同期していません"
+                else -> last
+            }
+        }
+
+        // トークンは伏せ字で入るので、入っていることだけ分かるようにする
+        if (Prefs.notionToken(ctx).isNotEmpty()) tokenInput.setText(Prefs.notionToken(ctx))
+        refresh()
+
+        connectBtn.setOnClickListener {
+            val token = tokenInput.text.toString().trim()
+            if (token.isEmpty()) {
+                Toast.makeText(ctx, "トークンを入れてください", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val pageId = dev.togar.dynasched.sync.NotionLink.pageIdFrom(pageInput.text.toString())
+            if (pageId == null) {
+                Toast.makeText(ctx, "ページのURLが読めません。Notionで「リンクをコピー」した物を貼ってください",
+                    Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            Prefs.setNotionToken(ctx, token)
+            status.text = "接続しています…"
+            connectBtn.isEnabled = false
+            Api.async({
+                val api = dev.togar.dynasched.sync.NotionApi(token)
+                api.whoAmI()   // 先にトークンだけ試す。作りかけの物を残さないため
+                api.createTaskDatabase(pageId, "スキマスのタスク")
+            }, { (dbId, dsId) ->
+                Prefs.setNotionTarget(ctx, dbId, dsId)
+                connectBtn.isEnabled = true
+                Toast.makeText(ctx, "繋がりました。最初の同期をします", Toast.LENGTH_SHORT).show()
+                refresh()
+                syncNow(status)
+            }, { e ->
+                connectBtn.isEnabled = true
+                status.text = "失敗: " + Api.friendlyMessage(e)
+            })
+        }
+
+        syncBtn.setOnClickListener { syncNow(status) }
+
+        disconnectBtn.setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle("同期をやめる")
+                .setMessage("トークンを消して同期を止めます。Notion側のデータベースも、" +
+                    "端末のタスクもそのまま残ります。")
+                .setPositiveButton("やめる") { _, _ ->
+                    Prefs.setNotionToken(ctx, "")
+                    Prefs.setNotionTarget(ctx, "", "")
+                    Prefs.setNotionLastResult(ctx, "")
+                    tokenInput.setText("")
+                    refresh()
+                }
+                .setNegativeButton("戻る", null)
+                .show()
+        }
+    }
+
+    private fun syncNow(status: TextView) {
+        val ctx = requireContext()
+        status.text = "同期しています…"
+        Api.async(
+            { dev.togar.dynasched.sync.NotionSyncer.sync(ctx.applicationContext) },
+            { r -> if (isAdded) status.text = r.message() },
+            { e -> if (isAdded) status.text = "失敗: " + Api.friendlyMessage(e) }
+        )
     }
 
     private fun today(): String =

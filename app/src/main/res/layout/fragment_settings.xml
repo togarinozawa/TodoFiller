@@ -172,6 +172,95 @@
             android:text="スケジューラを実行（空き時間を埋める）"
             android:textColor="@color/white" />
 
+        <!-- Notion同期。整理はNotion、実行の記録はスキマス、という分け方。
+             トークンは端末の外へ出さない（書き出しにも含めない）。 -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="24dp"
+            android:background="@color/surface_variant" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Notionと同期"
+            android:textColor="@color/primary"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="タスクの整理をNotionでやり、完了や予定はスキマスから書き戻します。アプリを開いた時と、タスクを編集した時に同期します。"
+            android:textColor="@color/on_bg_dim"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/notionTokenInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@color/surface"
+            android:hint="インテグレーションのトークン (ntn_...)"
+            android:importantForAutofill="no"
+            android:inputType="textPassword"
+            android:padding="12dp"
+            android:textColor="@color/on_bg"
+            android:textColorHint="@color/on_bg_dim"
+            android:textSize="13sp" />
+
+        <EditText
+            android:id="@+id/notionPageInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/surface"
+            android:hint="置き場所にするNotionページのURL"
+            android:importantForAutofill="no"
+            android:inputType="textUri"
+            android:padding="12dp"
+            android:textColor="@color/on_bg"
+            android:textColorHint="@color/on_bg_dim"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/notionConnectButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="@color/primary"
+            android:text="接続してデータベースを作る"
+            android:textColor="@color/white" />
+
+        <Button
+            android:id="@+id/notionSyncButton"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="今すぐ同期する"
+            android:textColor="@color/primary" />
+
+        <TextView
+            android:id="@+id/notionStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text=""
+            android:textColor="@color/on_bg_dim"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/notionDisconnectButton"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="同期をやめる"
+            android:textColor="@color/on_bg_dim" />
+
         <Button
             android:id="@+id/checkUpdateButton"
             android:layout_width="match_parent"

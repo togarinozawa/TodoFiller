@@ -24,6 +24,7 @@ import dev.togar.dynasched.engine.MaterialRow
 import dev.togar.dynasched.engine.PlanEngine
 import dev.togar.dynasched.engine.Scheduler
 import dev.togar.dynasched.engine.StudyEngine
+import dev.togar.dynasched.sync.NotionSyncer
 import dev.togar.dynasched.ui.Tags
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -302,6 +303,7 @@ object LocalRepo : Repo {
             "tags" to Tags.normalize(tags),
             "is_active" to 1, "is_completed" to 0, "sort_order" to next
         ))
+        NotionSyncer.syncSoon(ctx)
     }
 
 
@@ -316,6 +318,8 @@ object LocalRepo : Repo {
         } finally {
             db.endTransaction()
         }
+        orderedIds.forEach { NotionSyncer.markDirty(ctx, it) }
+        NotionSyncer.syncSoon(ctx)
     }
 
     override fun setHobbyParent(ctx: Context, id: Long, parentId: Long?) {
@@ -331,11 +335,15 @@ object LocalRepo : Repo {
             "UPDATE hobby_tasks SET parent_id=?, sort_order=? WHERE id=?",
             arrayOf(parentId, next, id)
         )
+        NotionSyncer.markDirty(ctx, id)
+        NotionSyncer.syncSoon(ctx)
     }
 
     override fun setHobbyPriority(ctx: Context, id: Long, priority: Int) {
         LocalDb.get(ctx).writableDatabase
             .execSQL("UPDATE hobby_tasks SET priority=? WHERE id=?", arrayOf(priority, id))
+        NotionSyncer.markDirty(ctx, id)
+        NotionSyncer.syncSoon(ctx)
     }
 
     override fun applyToSubtree(
@@ -359,7 +367,18 @@ object LocalRepo : Repo {
                 ") SELECT id FROM sub)",
             args.toTypedArray()
         )
+        subtreeIds(ctx, parentId).forEach { NotionSyncer.markDirty(ctx, it) }
+        NotionSyncer.syncSoon(ctx)
     }
+
+    /** parentId の配下すべて（自分は含まない） */
+    private fun subtreeIds(ctx: Context, parentId: Long): List<Long> =
+        LocalDb.get(ctx).readableDatabase.rawQuery(
+            "WITH RECURSIVE sub(id) AS (SELECT id FROM hobby_tasks WHERE parent_id=? " +
+                "UNION ALL SELECT h.id FROM hobby_tasks h JOIN sub s ON h.parent_id=s.id) " +
+                "SELECT id FROM sub",
+            arrayOf(parentId.toString())
+        ).mapRows { it.long("id") }
 
     override fun getHobbyItem(ctx: Context, id: Long): HobbyItem? =
         getHobby(ctx).firstOrNull { it.id == id }
@@ -382,6 +401,8 @@ object LocalRepo : Repo {
             "location" to location, "note" to note, "color" to color,
             "tags" to Tags.normalize(tags)
         ), "id=?", arrayOf(id.toString()))
+        NotionSyncer.markDirty(ctx, id)
+        NotionSyncer.syncSoon(ctx)
     }
 
     override fun completeHobby(ctx: Context, id: Long) = setHobbyCompleted(ctx, id, true)
@@ -391,6 +412,9 @@ object LocalRepo : Repo {
             "is_completed" to completed,
             "completed_at" to if (completed) nowNaive() else null
         ), "id=?", arrayOf(id.toString()))
+        // dirty は付けない。完了はスキマスが正なので、次の同期で食い違いとして
+        // 拾われる。圏外で落ちても繋がった時に勝手に揃う
+        NotionSyncer.syncSoon(ctx)
     }
 
     override fun deleteHobby(ctx: Context, id: Long) {
@@ -402,10 +426,13 @@ object LocalRepo : Repo {
             arrayOf(id.toString())
         ).mapRows { it.long("id") }
         if (ids.isEmpty()) return
+        // **消す前に**ページIDを控える。消した後では引けず、Notion側を畳めない
+        NotionSyncer.tombstone(ctx, ids)
         val ph = ids.joinToString(",") { "?" }
         val args = ids.map { it.toString() }.toTypedArray()
         db.execSQL("DELETE FROM scheduled_events WHERE hobby_task_id IN ($ph)", args)
         db.execSQL("DELETE FROM hobby_tasks WHERE id IN ($ph)", args)
+        NotionSyncer.syncSoon(ctx)
     }
 
     // ---- 教材 ----

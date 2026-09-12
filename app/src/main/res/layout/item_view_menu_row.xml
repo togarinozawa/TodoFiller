@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  選択肢の行と操作の行を1枚で兼ねる。
+  選択肢には丸印、操作には現在の値と「›」。丸の列が節の境目で途切れるので
+  どこまでが同じ選択肢かが目で分かる。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="?attr/selectableItemBackground"
+    android:minHeight="48dp"
+    android:paddingStart="20dp"
+    android:paddingEnd="20dp">
+
+    <!-- 操作の行では invisible にする。ラベルの左端を揃えたままにするため -->
+    <TextView
+        android:id="@+id/menuMark"
+        android:layout_width="26dp"
+        android:layout_height="wrap_content"
+        android:text="○"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="15sp" />
+
+    <TextView
+        android:id="@+id/menuLabel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:text=""
+        android:textColor="@color/on_bg"
+        android:textSize="15sp" />
+
+    <TextView
+        android:id="@+id/menuValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:text=""
+        android:textColor="@color/on_bg_dim"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/menuChevron"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:text="›"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="18sp"
+        android:visibility="gone" />
+</LinearLayout>

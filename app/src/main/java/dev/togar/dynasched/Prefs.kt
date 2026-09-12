@@ -162,4 +162,52 @@ object Prefs {
     fun setCollapsed(ctx: Context, ids: Set<Long>) {
         sp(ctx).edit().putStringSet("task_collapsed", ids.map { it.toString() }.toSet()).apply()
     }
+
+    // ---- Notion同期 ----
+    //
+    // トークンは内部インテグレーションのシークレット。**端末の外へ出さない。**
+    // 書き出し（バックアップJSON）にも含めない。持ち出したファイルが漏れると
+    // Notionのワークスペースごと触られるため。
+
+    /** インテグレーションのトークン。空なら同期しない */
+    fun notionToken(ctx: Context): String = sp(ctx).getString("notion_token", "") ?: ""
+
+    fun setNotionToken(ctx: Context, token: String) {
+        sp(ctx).edit().putString("notion_token", token.trim()).apply()
+    }
+
+    /** スキマスが作ったデータベース。空ならまだ作っていない */
+    fun notionDatabaseId(ctx: Context): String = sp(ctx).getString("notion_db", "") ?: ""
+
+    /**
+     * 実際に読み書きする先。2025-09-03版からデータベースは「入れ物」になり、
+     * 問い合わせも書き込みも**データソース**に対して行う。
+     */
+    fun notionDataSourceId(ctx: Context): String = sp(ctx).getString("notion_ds", "") ?: ""
+
+    fun setNotionTarget(ctx: Context, databaseId: String, dataSourceId: String) {
+        sp(ctx).edit().putString("notion_db", databaseId)
+            .putString("notion_ds", dataSourceId).apply()
+    }
+
+    /** 繋がっていて同期できる状態か */
+    fun notionReady(ctx: Context): Boolean =
+        notionToken(ctx).isNotEmpty() && notionDataSourceId(ctx).isNotEmpty()
+
+    /**
+     * 最後に全件を取れた時刻（ISO8601）。空なら次は全件取る。
+     * **全件を取った時だけ「Notionから消えた」と判断してよい**（NotionSync を参照）。
+     */
+    fun notionLastFullSync(ctx: Context): String = sp(ctx).getString("notion_full_at", "") ?: ""
+
+    fun setNotionLastFullSync(ctx: Context, iso: String) {
+        sp(ctx).edit().putString("notion_full_at", iso).apply()
+    }
+
+    /** 最後の同期結果の一言。設定画面に出す */
+    fun notionLastResult(ctx: Context): String = sp(ctx).getString("notion_last", "") ?: ""
+
+    fun setNotionLastResult(ctx: Context, text: String) {
+        sp(ctx).edit().putString("notion_last", text).apply()
+    }
 }

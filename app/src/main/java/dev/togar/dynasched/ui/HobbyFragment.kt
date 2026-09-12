@@ -21,6 +21,7 @@ import dev.togar.dynasched.Prefs
 import dev.togar.dynasched.R
 import dev.togar.dynasched.api.Api
 import dev.togar.dynasched.api.HobbyItem
+import dev.togar.dynasched.sync.NotionSyncer
 
 /**
  * 単発タスク（階層Todo）画面。
@@ -82,7 +83,9 @@ class HobbyFragment : Fragment() {
             override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
         })
 
-        swipe.setOnRefreshListener { load() }
+        // 引き下ろしはNotionから取り直す合図にもする。
+        // 開いている間にNotion側で書いたものを、閉じずに拾えるように
+        swipe.setOnRefreshListener { syncThenLoad() }
         updateSortLabel()
         return root
     }
@@ -90,6 +93,38 @@ class HobbyFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         load()
+        syncInBackground()
+    }
+
+    // ---- Notion同期 ----
+
+    /**
+     * 画面を開いたら裏で同期して、終わったら黙って描き直す。
+     *
+     * **待たせない。**繋がらない場所でも一覧は端末のDBから出るので、
+     * 同期の成否で画面を止める理由が無い。失敗も出さない（設定画面に残る）。
+     */
+    private fun syncInBackground() {
+        val ctx = requireContext().applicationContext
+        if (!Prefs.notionReady(ctx)) return
+        Api.async({ NotionSyncer.sync(ctx) }, { r ->
+            if (isAdded && r.pulled > 0) load()
+        }, { })
+    }
+
+    /** 引き下ろした時。こちらは結果を見せる */
+    private fun syncThenLoad() {
+        val ctx = requireContext().applicationContext
+        if (!Prefs.notionReady(ctx)) { load(); return }
+        Api.async({ NotionSyncer.sync(ctx) }, { r ->
+            if (!isAdded) return@async
+            load()
+            Toast.makeText(requireContext(), r.message(), Toast.LENGTH_SHORT).show()
+        }, { e ->
+            if (!isAdded) return@async
+            load()
+            Toast.makeText(requireContext(), Api.friendlyMessage(e), Toast.LENGTH_SHORT).show()
+        })
     }
 
     // ---- 表示の設定 ----
@@ -120,39 +155,24 @@ class HobbyFragment : Fragment() {
     /** 並び順と「完了の見せ方」、タグの絞り込みをまとめて選ぶ */
     private fun showViewMenu() {
         val ctx = requireContext()
-        val sorts = TaskSort.entries
-        val doneModes = DoneMode.entries
-        val curDone = doneMode()
-        val filter = Prefs.tagFilter(ctx)
-        val labels = sorts.map { if (it == sortMode()) "● ${it.label}" else "　${it.label}" } +
-            doneModes.map {
-                (if (it == curDone) "● " else "　") + "完了したものを${it.label}"
-            } +
-            listOf(
-                if (filter.isEmpty()) "　タグで絞り込む" else "● タグで絞り込む（${filter.size}個）",
-                "　横タブ: ${TabSource.from(Prefs.taskTabSource(ctx)).label}",
-                "　すべて畳む", "　すべて開く"
-            )
-
-        AlertDialog.Builder(ctx)
-            .setTitle("並び順と表示")
-            .setItems(labels.toTypedArray()) { _, i ->
-                // 並び順 → 完了の見せ方 → その他、の順に並んでいる
-                val afterSort = i - sorts.size
-                val extra = afterSort - doneModes.size
-                when {
-                    afterSort < 0 -> Prefs.setTaskSort(ctx, sorts[i].name)
-                    extra < 0 -> Prefs.setTaskDoneMode(ctx, doneModes[afterSort].name)
-                    extra == 0 -> { showTagFilter(); return@setItems }
-                    extra == 1 -> { showTabSource(); return@setItems }
-                    extra == 2 -> Prefs.setCollapsed(ctx, allParentIds())
-                    else -> Prefs.setCollapsed(ctx, emptySet())
-                }
-                updateSortLabel()
-                render()
+        val rows = ViewMenu.rows(
+            sort = sortMode(),
+            done = doneMode(),
+            tabSource = TabSource.from(Prefs.taskTabSource(ctx)),
+            tagFilterCount = Prefs.tagFilter(ctx).size
+        )
+        ViewMenuDialog.show(ctx, rows) { action ->
+            when (action) {
+                is ViewMenuAction.Sort -> Prefs.setTaskSort(ctx, action.sort.name)
+                is ViewMenuAction.Done -> Prefs.setTaskDoneMode(ctx, action.mode.name)
+                ViewMenuAction.TagFilter -> { showTagFilter(); return@show }
+                ViewMenuAction.TabSource -> { showTabSource(); return@show }
+                ViewMenuAction.CollapseAll -> Prefs.setCollapsed(ctx, allParentIds())
+                ViewMenuAction.ExpandAll -> Prefs.setCollapsed(ctx, emptySet())
             }
-            .setNegativeButton("閉じる", null)
-            .show()
+            updateSortLabel()
+            render()
+        }
     }
 
     /** タグで一覧を絞る。当てはまる枝だけを残し、木の形は保つ */

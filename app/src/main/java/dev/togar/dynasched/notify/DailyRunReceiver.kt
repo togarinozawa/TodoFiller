@@ -29,6 +29,13 @@ class DailyRunReceiver : BroadcastReceiver() {
         val pending = goAsync()
         Thread {
             try {
+                // 組み直す前にNotionから取り込む。
+                // **夜のうちにNotionへ足したタスクが、朝の予定に入らない**のを防ぐ。
+                // 繋がらなければそのまま端末の中身だけで組む（ここで止めない）
+                try {
+                    dev.togar.dynasched.sync.NotionSyncer.sync(appCtx)
+                } catch (e: Exception) {
+                }
                 Repo.current(appCtx).runScheduler(appCtx, Prefs.fillDays(appCtx))
                 ScheduleRefresh.refreshAlarms(appCtx)
             } catch (e: Exception) {

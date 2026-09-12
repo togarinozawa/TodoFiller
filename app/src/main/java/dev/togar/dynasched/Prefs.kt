@@ -204,6 +204,19 @@ object Prefs {
         sp(ctx).edit().putString("notion_full_at", iso).apply()
     }
 
+    /**
+     * 「まとめて消える計画」を一度見送った時の中身（端末IDを並べた文字列）。
+     *
+     * **次の同期でまったく同じ結果になったら実行する。**そうしないと、
+     * Notionで本当に大量に消した時に二度と追随できなくなる。
+     */
+    fun notionPendingDelete(ctx: Context): String =
+        sp(ctx).getString("notion_pending_delete", "") ?: ""
+
+    fun setNotionPendingDelete(ctx: Context, key: String) {
+        sp(ctx).edit().putString("notion_pending_delete", key).apply()
+    }
+
     /** 最後の同期結果の一言。設定画面に出す */
     fun notionLastResult(ctx: Context): String = sp(ctx).getString("notion_last", "") ?: ""
 

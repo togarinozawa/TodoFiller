@@ -116,6 +116,23 @@ class NotionApi(private val token: String) {
         return out
     }
 
+    /**
+     * ページ1件の生死を確かめる。戻り値は「Notionにまだ生きているか」。
+     *
+     * **一覧に出てこなかったからといって消してはいけない。**Notionの問い合わせは
+     * 作ったばかりのページをすぐ返さないことがある。消す前にここで名指しで訊く。
+     * 404（消された・見えなくなった）と in_trash だけを「死んだ」と見なし、
+     * **それ以外の失敗（通信断・429・500）は「生きている」側に倒す。**
+     */
+    fun isPageAlive(pageId: String): Boolean = try {
+        val o = request("GET", "$BASE/pages/$pageId", null)
+        !(o.optBoolean("in_trash", false) || o.optBoolean("archived", false))
+    } catch (e: ApiException) {
+        if (e.code == 404) false else true
+    } catch (e: Exception) {
+        true   // 分からない時は消さない
+    }
+
     // ---- 書く ----
 
     /** 新しいページを作って、そのページIDを返す */

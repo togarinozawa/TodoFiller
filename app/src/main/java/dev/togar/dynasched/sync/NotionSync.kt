@@ -83,6 +83,11 @@ data class SyncPlan(
     val updateRemote: List<Long> = emptyList(),
     /** 端末で消したのでNotion側もアーカイブする */
     val archiveRemote: List<String> = emptyList(),
+    /**
+     * 対応するページが一覧に出てこなかった行。**まだ消してはいけない。**
+     * 本当に消えたのか、単に返ってこなかっただけなのかを1件ずつ確かめる。
+     */
+    val verifyMissing: List<MissingPage> = emptyList(),
     /** 最終的な親。ページID → 親のページID（null は最上位） */
     val parentOf: Map<String, String?> = emptyMap(),
     /** 親子が環になっていたので断ち切ったページ。利用者に見せる */
@@ -100,6 +105,9 @@ data class SyncPlan(
 
 /** Notionの値で端末の行を上書きする指示 */
 data class LocalUpdate(val localId: Long, val from: NotionTask)
+
+/** 一覧に出てこなかった行。確かめてから消す */
+data class MissingPage(val localId: Long, val pageId: String)
 
 object NotionSync {
 
@@ -167,11 +175,15 @@ object NotionSync {
         // 端末で作られてまだ送っていないもの
         val insertRemote = local.filter { it.notionPageId.isEmpty() }.map { it.id }
 
-        // 全件を見た時だけ「Notionから消えた」と判断できる
+        // **一覧に出てこないことを「消された」の根拠にしない。**
+        // Notionの問い合わせは作ったばかりのページをすぐ返さないことがあり、
+        // その隙に同期が走ると端末のタスクを巻き添えで消す（v36で実際に起きた）。
+        // ここでは「行方が分からない」とだけ言い、1件ずつ確かめるのは呼び出し側。
+        val verifyMissing = ArrayList<MissingPage>()
         if (full) {
             for (m in local) {
                 if (m.notionPageId.isEmpty()) continue
-                if (!seen.contains(m.notionPageId)) deleteLocal.add(m.id)
+                if (!seen.contains(m.notionPageId)) verifyMissing.add(MissingPage(m.id, m.notionPageId))
             }
         }
 
@@ -184,6 +196,7 @@ object NotionSync {
             insertRemote = insertRemote,
             updateRemote = updateRemote.distinct().filterNot { gone.contains(it) },
             archiveRemote = archiveRemote,
+            verifyMissing = verifyMissing.filterNot { gone.contains(it.localId) },
             parentOf = parents,
             brokenCycles = broken
         )

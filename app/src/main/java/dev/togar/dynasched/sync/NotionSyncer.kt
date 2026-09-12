@@ -100,6 +100,29 @@ object NotionSyncer {
 
         val db = LocalDb.get(ctx).writableDatabase
 
+        // 0. 一覧に出てこなかった行を1件ずつ確かめる。
+        // **ここを省くと、Notionが返しそびれただけの行を端末から消す**（v36の事故）。
+        val confirmedGone = ArrayList<Long>()
+        for (m in plan.verifyMissing) {
+            if (!api.isPageAlive(m.pageId)) confirmedGone.add(m.localId)
+        }
+
+        // 安全弁。まとめて大量に消える計画は、一度だけ見送る。
+        // **同じ結果がもう一度出たら実行する**（そうしないと、Notionで本当に
+        // 大量に消した時に二度と追随できなくなる）。事故なら二度目は違う結果になる
+        val toDelete = (plan.deleteLocal + confirmedGone).distinct()
+        val tooMany = toDelete.size >= 5 && toDelete.size * 2 >= local.size
+        val deleteKey = toDelete.sorted().joinToString(",")
+        if (tooMany && Prefs.notionPendingDelete(ctx) != deleteKey) {
+            Prefs.setNotionPendingDelete(ctx, deleteKey)
+            return SyncResult(
+                error = "${local.size}件中${toDelete.size}件が消える計画だったので、" +
+                    "今回は見送りました。Notionで本当に消したのなら、" +
+                    "もう一度同期すると実行します"
+            )
+        }
+        Prefs.setNotionPendingDelete(ctx, "")
+
         // 1. Notion発の取り込み。親を繋ぐのは全部の行が出来てから
         db.beginTransaction()
         try {
@@ -108,7 +131,7 @@ object NotionSyncer {
                 pageToLocal[r.pageId] = id
             }
             for (u in plan.updateLocal) updateFromNotion(db, u)
-            for (id in plan.deleteLocal) deleteLocalRow(db, id)
+            for (id in toDelete) deleteLocalRow(db, id)
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -158,7 +181,8 @@ object NotionSyncer {
         applyParents(db, plan.parentOf, pageToLocal)
 
         return SyncResult(
-            pulled = plan.pulled(), pushed = plan.pushed(),
+            pulled = plan.insertLocal.size + plan.updateLocal.size + toDelete.size,
+            pushed = plan.pushed(),
             brokenCycles = plan.brokenCycles.size
         )
     }

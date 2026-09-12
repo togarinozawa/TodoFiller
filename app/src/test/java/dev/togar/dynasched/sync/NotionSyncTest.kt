@@ -105,22 +105,48 @@ class NotionSyncTest {
     }
 
     @Test
-    fun 全件取得なら消えたページの行を落とす() {
+    fun 一覧に出てこない行はまだ消さず確認に回す() {
+        // **出てこない＝消された、ではない。**Notionは作ったばかりのページを
+        // すぐ返さないことがあり、それで端末のタスクを全部飛ばした（v36）
         val p = NotionSync.plan(
             local = listOf(loc(1, "p1"), loc(2, "p2")),
             remote = listOf(rem("p2")), full = true
         )
-        assertEquals(listOf(1L), p.deleteLocal)
+        assertTrue("確かめる前に消してはいけない", p.deleteLocal.isEmpty())
+        assertEquals(listOf(MissingPage(1L, "p1")), p.verifyMissing)
     }
 
     @Test
-    fun 差分取得では消えたと判断しない() {
-        // ここを間違えると**更新が無かっただけのタスクを全部消す**
+    fun 差分取得では行方不明扱いすらしない() {
+        // 絞って取った結果に出てこないのは当たり前なので、確認にも回さない
         val p = NotionSync.plan(
             local = listOf(loc(1, "p1"), loc(2, "p2")),
             remote = listOf(rem("p2")), full = false
         )
         assertTrue(p.deleteLocal.isEmpty())
+        assertTrue(p.verifyMissing.isEmpty())
+    }
+
+    @Test
+    fun アーカイブ済みと分かっている行は確認に回さない() {
+        // Notionが名指しで「消えた」と言っている分は、もう訊き直す必要がない
+        val p = NotionSync.plan(
+            local = listOf(loc(1, "p1")),
+            remote = listOf(rem("p1", archived = true)), full = true
+        )
+        assertEquals(listOf(1L), p.deleteLocal)
+        assertTrue(p.verifyMissing.isEmpty())
+    }
+
+    @Test
+    fun ページIDが無い行は行方不明にならない() {
+        // まだ送っていないだけ。ここを混ぜると、初回同期で全部消える
+        val p = NotionSync.plan(
+            local = listOf(loc(1), loc(2)), remote = emptyList(), full = true
+        )
+        assertTrue(p.verifyMissing.isEmpty())
+        assertTrue(p.deleteLocal.isEmpty())
+        assertEquals(listOf(1L, 2L), p.insertRemote)
     }
 
     @Test

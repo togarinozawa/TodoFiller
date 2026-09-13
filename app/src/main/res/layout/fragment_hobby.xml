@@ -54,6 +54,38 @@
         app:tabSelectedTextColor="@color/primary"
         app:tabTextColor="@color/on_bg_dim" />
 
+    <!-- 塊の中に小グループがある時だけ出る下段。上段より小さく、字も細くして
+         「タブの中のタブ」だと見て分かるようにしてある -->
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/taskSubTabs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/surface"
+        android:visibility="gone"
+        app:tabMode="scrollable"
+        app:tabGravity="start"
+        app:tabMinWidth="0dp"
+        app:tabPaddingStart="12dp"
+        app:tabPaddingEnd="12dp"
+        app:tabIndicatorColor="@color/accent_goal"
+        app:tabIndicatorHeight="2dp"
+        app:tabSelectedTextColor="@color/accent_goal"
+        app:tabTextColor="@color/on_bg_dim" />
+
+    <!-- 片付いた数・増えた数。設定で消せる -->
+    <TextView
+        android:id="@+id/statsText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="2dp"
+        android:text=""
+        android:textColor="@color/on_bg_dim"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
     <!-- タスク追加（専用画面へ遷移） -->
     <Button
         android:id="@+id/addTaskButton"

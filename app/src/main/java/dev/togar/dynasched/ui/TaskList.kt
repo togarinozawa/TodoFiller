@@ -315,16 +315,58 @@ object TaskTabs {
             .map { TaskTab("g:${it.id}", it.name) }
     }
 
-    /** そのタブで見せるタスク。キーが古くて当てはまらない時は全部返す */
-    fun apply(all: List<HobbyItem>, key: String): List<HobbyItem> = when {
+    /**
+     * そのタブで見せるタスク。キーが古くて当てはまらない時は全部返す。
+     *
+     * [hideGrouped] を立てると、**「すべて」タブからタブになっている塊を外す。**
+     * 塊は自分のタブで見られるので、すべてにも出すと同じものを二度見ることになる。
+     * 残るのはどのタブにも属さないタスクだけ。
+     */
+    fun apply(
+        all: List<HobbyItem>,
+        key: String,
+        source: TabSource = TabSource.NONE,
+        hideGrouped: Boolean = false
+    ): List<HobbyItem> = when {
         key.startsWith("g:") -> {
             val id = key.removePrefix("g:").toLongOrNull()
             // 親自身は出さない。タブの見出しが親の名前なので、繰り返しても意味が無い
             if (id == null) all else TaskList.descendantsOf(all, id)
         }
         key.startsWith("t:") -> Tags.filterTree(all, setOf(key.removePrefix("t:")))
+        hideGrouped -> withoutTabbed(all, source)
         else -> all
     }
+
+    /** タブになっている塊（と、その配下）を落とす */
+    private fun withoutTabbed(all: List<HobbyItem>, source: TabSource): List<HobbyItem> {
+        val groupIds = tabs(all, source).mapNotNull { it.key.removePrefix("g:").toLongOrNull() }
+        if (groupIds.isEmpty()) return all
+        val drop = HashSet<Long>(groupIds)
+        for (id in groupIds) TaskList.descendantsOf(all, id).forEach { drop.add(it.id) }
+        return all.filterNot { drop.contains(it.id) }
+    }
+
+    /**
+     * 選んでいる塊の中の小グループ。**タブの中のタブ**に使う。
+     *
+     * 直下の子のうち、さらに子を持つものだけ。孫より下は降りない
+     * （降りると、下段のタブが上段と同じだけ増えて意味が無くなる）。
+     */
+    fun subTabs(all: List<HobbyItem>, key: String): List<TaskTab> {
+        val id = key.removePrefix("g:").toLongOrNull()
+        if (!key.startsWith("g:") || id == null) return emptyList()
+        val hasChild = all.mapNotNullTo(HashSet()) { it.parentId }
+        val subs = all.filter { it.parentId == id && hasChild.contains(it.id) }
+            .sortedWith(TaskList.comparator(TaskSort.MANUAL, false))
+        if (subs.isEmpty()) return emptyList()
+        // 先頭は「この塊ぜんぶ」。下段を出した時に全体へ戻れなくなるのを防ぐ
+        return listOf(TaskTab(key, "ぜんぶ")) + subs.map { TaskTab("g:${it.id}", it.name) }
+    }
+
+    /** そのタブが指している塊のID。塊タブでなければ null（追加先を決めるのに使う） */
+    fun groupIdOf(key: String): Long? =
+        if (key.startsWith("g:")) key.removePrefix("g:").toLongOrNull() else null
 
     /** そのキーのタブがまだ存在するか（グループを消した後などに効く） */
     fun exists(tabs: List<TaskTab>, key: String): Boolean = tabs.any { it.key == key }

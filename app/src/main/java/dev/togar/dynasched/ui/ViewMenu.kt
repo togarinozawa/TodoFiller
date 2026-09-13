@@ -42,6 +42,8 @@ sealed class ViewMenuAction {
     data class Done(val mode: DoneMode) : ViewMenuAction()
     object TagFilter : ViewMenuAction()
     object TabSource : ViewMenuAction()
+    object HideGrouped : ViewMenuAction()
+    object StatsSpan : ViewMenuAction()
     object CollapseAll : ViewMenuAction()
     object ExpandAll : ViewMenuAction()
 }
@@ -51,6 +53,7 @@ object ViewMenu {
     const val SORT = "並び順"
     const val DONE = "完了したタスク"
     const val NARROW = "絞り込みとタブ"
+    const val COUNT = "数える"
     const val BULK = "まとめて操作"
 
     /**
@@ -62,7 +65,9 @@ object ViewMenu {
         sort: TaskSort,
         done: DoneMode,
         tabSource: TabSource,
-        tagFilterCount: Int
+        tagFilterCount: Int,
+        hideGrouped: Boolean = false,
+        statsLabel: String = ""
     ): List<ViewMenuRow> {
         val rows = ArrayList<ViewMenuRow>()
 
@@ -90,6 +95,19 @@ object ViewMenu {
                 ViewMenuAction.TabSource, "横に並べるタブ",
                 value = tabSource.label, opensDialog = true
             )
+        )
+
+        rows.add(
+            ViewMenuRow.Action(
+                ViewMenuAction.HideGrouped, "「すべて」から塊を外す",
+                value = if (hideGrouped) "外す" else "出す"
+            )
+        )
+
+        rows.add(ViewMenuRow.Section(COUNT))
+        rows.add(
+            ViewMenuRow.Action(ViewMenuAction.StatsSpan, "済んだ数・増えた数",
+                value = statsLabel, opensDialog = true)
         )
 
         rows.add(ViewMenuRow.Section(BULK))

@@ -2,6 +2,7 @@ package dev.togar.dynasched.ui
 
 import dev.togar.dynasched.api.HobbyItem
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -40,6 +41,48 @@ class TaskTabsTest {
     )
 
     // ---- タブの並び ----
+
+    @Test
+    fun `すべてタブから塊を外すと残るのは属さないタスクだけ`() {
+        // 塊は自分のタブで見られるので、すべてにも出すと二度見ることになる
+        val shown = TaskTabs.apply(tree, TaskTabs.ALL, TabSource.TOP, hideGrouped = true)
+        assertEquals(listOf("単独タスク"), shown.map { it.name })
+    }
+
+    @Test
+    fun `外す設定が無ければすべてタブは全部出す`() {
+        val shown = TaskTabs.apply(tree, TaskTabs.ALL, TabSource.TOP, hideGrouped = false)
+        assertEquals(tree.size, shown.size)
+    }
+
+    @Test
+    fun `タブを出さない設定なら外しようがないので全部出す`() {
+        val shown = TaskTabs.apply(tree, TaskTabs.ALL, TabSource.NONE, hideGrouped = true)
+        assertEquals(tree.size, shown.size)
+    }
+
+    @Test
+    fun `塊の中の小グループが下段のタブになる`() {
+        val subs = TaskTabs.subTabs(nested, "g:1")
+        // 先頭は塊ぜんぶへ戻る口
+        assertEquals(listOf("ぜんぶ", "資料作り"), subs.map { it.label })
+        assertEquals("g:1", subs.first().key)
+    }
+
+    @Test
+    fun `小グループが無ければ下段は出さない`() {
+        // 「家事」の子は洗濯だけで、洗濯は子を持たない
+        assertTrue(TaskTabs.subTabs(nested, "g:5").isEmpty())
+        assertTrue(TaskTabs.subTabs(nested, TaskTabs.ALL).isEmpty())
+        assertTrue(TaskTabs.subTabs(nested, "t:語学").isEmpty())
+    }
+
+    @Test
+    fun `タブから追加先の塊を引ける`() {
+        assertEquals(7L, TaskTabs.groupIdOf("g:7"))
+        assertNull(TaskTabs.groupIdOf(TaskTabs.ALL))
+        assertNull(TaskTabs.groupIdOf("t:語学"))
+    }
 
     @Test
     fun `一番上だけなら入れ子の小グループはタブにしない`() {

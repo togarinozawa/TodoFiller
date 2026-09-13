@@ -54,6 +54,24 @@
             android:visibility="gone" />
     </LinearLayout>
 
+    <!-- 優先度。数字だけだと目が滑るので、帯の色で高い低いを先に伝える -->
+    <TextView
+        android:id="@+id/priorityChip"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="6dp"
+        android:minWidth="22dp"
+        android:gravity="center"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:text=""
+        android:textColor="@color/white"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
     <Button
         android:id="@+id/addChildButton"
         style="?attr/materialButtonOutlinedStyle"

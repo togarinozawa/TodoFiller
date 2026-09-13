@@ -35,10 +35,18 @@ class HobbyFragment : Fragment() {
     private lateinit var dragHintText: TextView
     private lateinit var sortButton: Button
     private lateinit var tabs: com.google.android.material.tabs.TabLayout
+    private lateinit var subTabs: com.google.android.material.tabs.TabLayout
+    private lateinit var statsText: TextView
     private lateinit var touchHelper: ItemTouchHelper
 
     /** タブを差し替えている最中か。差し替え中の選択通知で二重描画しないため */
     private var rebuildingTabs = false
+
+    /** 下段で選んでいる小グループ。空なら塊ぜんぶ。画面を離れたら忘れてよい */
+    private var subTabKey: String = ""
+
+    /** 数えるための控え。**描画のたびにDBを読まない**（メインスレッドが止まる） */
+    private var statRowsCache: List<StatRow> = emptyList()
 
     /** 直近に読み込んだ生データ。並び替え・折りたたみは読み直さずに組み直す */
     private var loaded: List<HobbyItem> = emptyList()
@@ -53,6 +61,8 @@ class HobbyFragment : Fragment() {
         dragHintText = root.findViewById(R.id.dragHintText)
         sortButton = root.findViewById(R.id.sortButton)
         tabs = root.findViewById(R.id.taskTabs)
+        subTabs = root.findViewById(R.id.taskSubTabs)
+        statsText = root.findViewById(R.id.statsText)
         val recycler = root.findViewById<RecyclerView>(R.id.recycler)
         val addButton = root.findViewById<Button>(R.id.addTaskButton)
 
@@ -69,7 +79,14 @@ class HobbyFragment : Fragment() {
         touchHelper.attachToRecyclerView(recycler)
 
         addButton.setOnClickListener {
-            startActivity(Intent(requireContext(), AddTaskActivity::class.java))
+            // 塊のタブを開いている時は、その中に足す。
+            // 開いている場所と足される場所が違うと、足した物がその場に出てこない
+            val intent = Intent(requireContext(), AddTaskActivity::class.java)
+            groupOfCurrentTab()?.let { g ->
+                intent.putExtra(AddTaskActivity.EXTRA_PARENT_ID, g.id)
+                intent.putExtra(AddTaskActivity.EXTRA_PARENT_NAME, g.name)
+            }
+            startActivity(intent)
         }
         sortButton.setOnClickListener { showViewMenu() }
 
@@ -77,6 +94,8 @@ class HobbyFragment : Fragment() {
             override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
                 if (rebuildingTabs) return
                 Prefs.setTaskTab(requireContext(), tab.tag as? String ?: TaskTabs.ALL)
+                subTabKey = ""   // 上段が変われば下段は別物になる
+                rebuildSubTabs()
                 render()
             }
             override fun onTabUnselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
@@ -85,6 +104,16 @@ class HobbyFragment : Fragment() {
 
         // 引き下ろしはNotionから取り直す合図にもする。
         // 開いている間にNotion側で書いたものを、閉じずに拾えるように
+        subTabs.addOnTabSelectedListener(object : com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
+                if (rebuildingTabs) return
+                subTabKey = tab.tag as? String ?: ""
+                render()
+            }
+            override fun onTabUnselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+            override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+        })
+
         swipe.setOnRefreshListener { syncThenLoad() }
         updateSortLabel()
         return root
@@ -159,7 +188,9 @@ class HobbyFragment : Fragment() {
             sort = sortMode(),
             done = doneMode(),
             tabSource = TabSource.from(Prefs.taskTabSource(ctx)),
-            tagFilterCount = Prefs.tagFilter(ctx).size
+            tagFilterCount = Prefs.tagFilter(ctx).size,
+            hideGrouped = Prefs.taskAllHidesGrouped(ctx),
+            statsLabel = if (Prefs.taskShowStats(ctx)) statsSpan(ctx).label else "出さない"
         )
         ViewMenuDialog.show(ctx, rows) { action ->
             when (action) {
@@ -167,12 +198,35 @@ class HobbyFragment : Fragment() {
                 is ViewMenuAction.Done -> Prefs.setTaskDoneMode(ctx, action.mode.name)
                 ViewMenuAction.TagFilter -> { showTagFilter(); return@show }
                 ViewMenuAction.TabSource -> { showTabSource(); return@show }
+                ViewMenuAction.HideGrouped ->
+                    Prefs.setTaskAllHidesGrouped(ctx, !Prefs.taskAllHidesGrouped(ctx))
+                ViewMenuAction.StatsSpan -> { showStatsSpan(); return@show }
                 ViewMenuAction.CollapseAll -> Prefs.setCollapsed(ctx, allParentIds())
                 ViewMenuAction.ExpandAll -> Prefs.setCollapsed(ctx, emptySet())
             }
             updateSortLabel()
             render()
         }
+    }
+
+    /** 数える期間を選ぶ。出さないことも選べる */
+    private fun showStatsSpan() {
+        val ctx = requireContext()
+        val spans = Stats.Span.entries
+        val labels = spans.map { it.label }.toTypedArray() + "出さない"
+        AlertDialog.Builder(ctx)
+            .setTitle("済んだ数・増えた数")
+            .setItems(labels) { _, i ->
+                if (i < spans.size) {
+                    Prefs.setTaskStatsSpan(ctx, spans[i].name)
+                    Prefs.setTaskShowStats(ctx, true)
+                } else {
+                    Prefs.setTaskShowStats(ctx, false)
+                }
+                updateSortLabel(); render()
+            }
+            .setNegativeButton("閉じる", null)
+            .show()
     }
 
     /** タグで一覧を絞る。当てはまる枝だけを残し、木の形は保つ */
@@ -236,11 +290,15 @@ class HobbyFragment : Fragment() {
         swipe.isRefreshing = true
         val ctx = requireContext().applicationContext
         Api.async(
-            work = { Repo.current(ctx).getHobby(ctx) },
-            onSuccess = { all ->
+            work = {
+                val repo = Repo.current(ctx)
+                repo.getHobby(ctx) to repo.statRows(ctx)
+            },
+            onSuccess = { (all, stats) ->
                 if (!isAdded) return@async
                 swipe.isRefreshing = false
                 loaded = all
+                statRowsCache = stats
                 rebuildTabs()
                 render()
             },
@@ -284,6 +342,52 @@ class HobbyFragment : Fragment() {
         }
         rebuildingTabs = false
         tabs.visibility = View.VISIBLE
+        rebuildSubTabs()
+    }
+
+    /** 塊の中に小グループがある時だけ、下段を出す */
+    private fun rebuildSubTabs() {
+        val list = TaskTabs.subTabs(loaded, currentTab())
+        if (list.isEmpty()) {
+            subTabs.visibility = View.GONE
+            subTabs.removeAllTabs()
+            subTabKey = ""
+            return
+        }
+        if (list.none { it.key == subTabKey }) subTabKey = ""
+        rebuildingTabs = true
+        subTabs.removeAllTabs()
+        for (t in list) {
+            val tab = subTabs.newTab().setText(t.label)
+            tab.tag = t.key
+            // 空 = 塊ぜんぶ。先頭がそれに当たる
+            subTabs.addTab(tab, t.key == subTabKey || (subTabKey.isEmpty() && t == list.first()))
+        }
+        rebuildingTabs = false
+        subTabs.visibility = View.VISIBLE
+    }
+
+    /** 片付いた数・増えた数。数えるのは [Stats]、ここは出すだけ */
+    private fun renderStats(ctx: android.content.Context) {
+        if (!Prefs.taskShowStats(ctx)) {
+            statsText.visibility = View.GONE
+            return
+        }
+        val span = statsSpan(ctx)
+        val from = Stats.from(java.time.LocalDate.now(), span)
+        val s = Stats.count(statRowsCache, from)
+        statsText.text = "${span.label}: ${s.line()}"
+        statsText.visibility = View.VISIBLE
+    }
+
+    private fun statsSpan(ctx: android.content.Context): Stats.Span =
+        Stats.Span.entries.firstOrNull { it.name == Prefs.taskStatsSpan(ctx) } ?: Stats.Span.WEEK
+
+    /** いま開いている塊。塊のタブでなければ null */
+    private fun groupOfCurrentTab(): HobbyItem? {
+        val key = if (subTabKey.isNotEmpty()) subTabKey else currentTab()
+        val id = TaskTabs.groupIdOf(key) ?: return null
+        return loaded.firstOrNull { it.id == id }
     }
 
     /** 読み直さずに並べ直す。並び順・折りたたみ・絞り込み・タブを変えたときはこちらだけ */
@@ -292,8 +396,14 @@ class HobbyFragment : Fragment() {
         val ctx = requireContext()
         val filter = Prefs.tagFilter(ctx)
         val tabKey = currentTab()
-        val inTab = TaskTabs.apply(loaded, tabKey)
+        val source = TabSource.from(Prefs.taskTabSource(ctx))
+        // 下段で小グループを選んでいればそちらが優先。無ければ上段の塊ぜんぶ
+        val effective = if (subTabKey.isNotEmpty() && subTabKey != tabKey) subTabKey else tabKey
+        val inTab = TaskTabs.apply(
+            loaded, effective, source, Prefs.taskAllHidesGrouped(ctx)
+        )
         val visible = Tags.filterTree(inTab, filter)
+        renderStats(ctx)
         val mode = doneMode()
         val rows = TaskList.build(visible, sortMode(), Prefs.collapsed(ctx), mode)
         adapter.submit(rows)

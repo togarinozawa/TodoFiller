@@ -127,8 +127,9 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
         /**
          * 2: hobby_tasks.sort_order（手動の並び順） / 3: hobby_tasks.tags
          * 4: Notion同期の対応付け（notion_page_id・dirty）と notion_tombstones
+         * 5: hobby_tasks.created_at（増えた数を数えるため）
          */
-        private const val VERSION = 4
+        private const val VERSION = 5
 
         /** (テーブル, 列, 定義) */
         private val MIGRATIONS = listOf(
@@ -137,6 +138,10 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
             Triple("hobby_tasks", "notion_page_id", "TEXT DEFAULT ''"),
             // 端末で編集したがまだ押し返せていない（圏外など）
             Triple("hobby_tasks", "dirty", "INTEGER DEFAULT 0"),
+            // **既定値を付けない。**SQLiteのALTERは datetime('now') のような
+            // 非定数の既定値を受け付けない。挿入時に明示して入れる。
+            // 既存の行は空のままで、「増えた数」には数えない（[ui.Stats]）
+            Triple("hobby_tasks", "created_at", "TEXT"),
             Triple("hobby_tasks", "tags", "TEXT DEFAULT ''")
         )
 

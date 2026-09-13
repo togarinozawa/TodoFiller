@@ -257,6 +257,7 @@ object NotionSyncer {
             "duration_minutes" to r.durationMinutes, "priority" to r.priority,
             "location" to r.location, "note" to r.note, "tags" to r.tags,
             "sort_order" to r.sortOrder, "color" to r.color, "is_active" to 1,
+            "created_at" to nowNaive(),
             "is_completed" to r.completed, "notion_page_id" to r.pageId, "dirty" to 0
         ))
 
@@ -332,6 +333,10 @@ object NotionSyncer {
     }
 
     // ---- 時刻 ----
+
+    /** 端末の他の日時と同じ形。[dev.togar.dynasched.ui.Stats] が先頭10文字で比べる */
+    private fun nowNaive(): String =
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.JAPAN).format(Date())
 
     private fun nowIso(): String =
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZZZZZ", Locale.JAPAN).format(Date())

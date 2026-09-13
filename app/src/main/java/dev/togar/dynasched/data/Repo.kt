@@ -34,6 +34,9 @@ interface Repo {
     fun runScheduler(ctx: Context, days: Int): RunReport
 
     fun getHobby(ctx: Context): List<HobbyItem>
+
+    /** 片付いた数・増えた数を数えるための最小限の行（[dev.togar.dynasched.ui.Stats]） */
+    fun statRows(ctx: Context): List<dev.togar.dynasched.ui.StatRow>
     fun addHobby(
         ctx: Context, name: String, parentId: Long?, durationMinutes: Int,
         priority: Int, location: String, note: String, color: String, tags: String = ""

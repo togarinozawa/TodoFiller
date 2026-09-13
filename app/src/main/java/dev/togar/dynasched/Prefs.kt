@@ -163,6 +163,31 @@ object Prefs {
         sp(ctx).edit().putStringSet("task_collapsed", ids.map { it.toString() }.toSet()).apply()
     }
 
+    /**
+     * 「すべて」タブから、タブになっている塊を外すか。
+     * 塊は自分のタブで見られるので、すべてにも出すと二度見ることになる。
+     */
+    fun taskAllHidesGrouped(ctx: Context): Boolean =
+        sp(ctx).getBoolean("task_all_hides_grouped", false)
+
+    fun setTaskAllHidesGrouped(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("task_all_hides_grouped", on).apply()
+    }
+
+    /** 片付いた数・増えた数を一覧の上に出すか */
+    fun taskShowStats(ctx: Context): Boolean = sp(ctx).getBoolean("task_show_stats", true)
+
+    fun setTaskShowStats(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("task_show_stats", on).apply()
+    }
+
+    /** 数える期間（Stats.Span の名前） */
+    fun taskStatsSpan(ctx: Context): String = sp(ctx).getString("task_stats_span", "WEEK") ?: "WEEK"
+
+    fun setTaskStatsSpan(ctx: Context, name: String) {
+        sp(ctx).edit().putString("task_stats_span", name).apply()
+    }
+
     // ---- Notion同期 ----
     //
     // トークンは内部インテグレーションのシークレット。**端末の外へ出さない。**

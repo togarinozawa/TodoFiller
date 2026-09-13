@@ -25,6 +25,7 @@ import dev.togar.dynasched.engine.PlanEngine
 import dev.togar.dynasched.engine.Scheduler
 import dev.togar.dynasched.engine.StudyEngine
 import dev.togar.dynasched.sync.NotionSyncer
+import dev.togar.dynasched.ui.StatRow
 import dev.togar.dynasched.ui.Tags
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -301,7 +302,8 @@ object LocalRepo : Repo {
             "name" to name, "parent_id" to parentId, "duration_minutes" to durationMinutes,
             "priority" to priority, "location" to location, "note" to note, "color" to color,
             "tags" to Tags.normalize(tags),
-            "is_active" to 1, "is_completed" to 0, "sort_order" to next
+            "is_active" to 1, "is_completed" to 0, "sort_order" to next,
+            "created_at" to nowNaive()
         ))
         NotionSyncer.syncSoon(ctx)
     }
@@ -379,6 +381,18 @@ object LocalRepo : Repo {
                 "SELECT id FROM sub",
             arrayOf(parentId.toString())
         ).mapRows { it.long("id") }
+
+    /** 片付いた数・増えた数を数えるための最小限の行 */
+    override fun statRows(ctx: Context): List<StatRow> =
+        LocalDb.get(ctx).readableDatabase.rawQuery(
+            "SELECT created_at, completed_at, is_completed FROM hobby_tasks WHERE is_active=1", null
+        ).mapRows { c ->
+            StatRow(
+                createdAt = c.str("created_at").ifEmpty { null },
+                completedAt = c.str("completed_at").ifEmpty { null },
+                completed = c.bool("is_completed")
+            )
+        }
 
     override fun getHobbyItem(ctx: Context, id: Long): HobbyItem? =
         getHobby(ctx).firstOrNull { it.id == id }

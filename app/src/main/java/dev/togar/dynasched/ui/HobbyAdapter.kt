@@ -50,12 +50,23 @@ class HobbyAdapter(
         notifyItemMoved(from, to)
     }
 
+    /**
+     * 優先度の帯色。**数字を読ませる前に、高い低いを色で伝える**のが目的。
+     * 既定が 3/5/8 の3段なので、その境目で切ってある。
+     */
+    private fun priorityColor(p: Int): Int = when {
+        p >= 8 -> 0xFFE24A90.toInt()   // 高い
+        p >= 5 -> 0xFF4A90E2.toInt()   // 普通
+        else -> 0xFF5F5F6E.toInt()     // 低い
+    }
+
     inner class VH(view: View) : RecyclerView.ViewHolder(view) {
         val root: LinearLayout = view.findViewById(R.id.itemRoot)
         val expand: TextView = view.findViewById(R.id.expandToggle)
         val check: CheckBox = view.findViewById(R.id.checkBox)
         val title: TextView = view.findViewById(R.id.taskTitle)
         val sub: TextView = view.findViewById(R.id.taskSub)
+        val priority: TextView = view.findViewById(R.id.priorityChip)
         val textContainer: View = title.parent as View
         val addChild: Button = view.findViewById(R.id.addChildButton)
         val delete: Button = view.findViewById(R.id.deleteButton)
@@ -108,6 +119,20 @@ class HobbyAdapter(
             holder.title.compoundDrawablePadding = (8 * density).toInt()
         } else {
             holder.title.setCompoundDrawablesRelative(null, null, null, null)
+        }
+
+        // 優先度。葉タスクだけ。親は配下がばらばらなので、まとめて出しても嘘になる
+        if (row.hasChildren) {
+            holder.priority.visibility = View.GONE
+        } else {
+            holder.priority.visibility = View.VISIBLE
+            holder.priority.text = item.priority.toString()
+            holder.priority.alpha = if (item.isCompleted) 0.4f else 1.0f
+            val bg = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 6 * density
+                setColor(priorityColor(item.priority))
+            }
+            holder.priority.background = bg
         }
 
         holder.sub.visibility = View.VISIBLE

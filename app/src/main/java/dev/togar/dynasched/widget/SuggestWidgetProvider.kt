@@ -63,9 +63,11 @@ class SuggestWidgetProvider : AppWidgetProvider() {
                             views.setTextViewText(resId, "")
                         }
                     }
+                    // 空いていた行に、片付いた数・増えた数を出す。
+                    // ウィジェットは狭いので、新しい行は足さず既存の1行を使う
                     views.setTextViewText(
                         R.id.widgetStatus,
-                        if (items.isEmpty()) "候補なし。ゆっくり休みましょう" else ""
+                        if (items.isEmpty()) "候補なし。ゆっくり休みましょう" else statsLine(ctx)
                     )
                 } catch (e: Exception) {
                     views.setTextViewText(LINES[0], "取得できませんでした")
@@ -75,6 +77,21 @@ class SuggestWidgetProvider : AppWidgetProvider() {
                 attachIntents(ctx, views)
                 for (id in ids) mgr.updateAppWidget(id, views)
             }.start()
+        }
+
+        /** 設定で出さないことも選べる。数え方は [dev.togar.dynasched.ui.Stats] と同じ */
+        private fun statsLine(ctx: Context): String {
+            if (!dev.togar.dynasched.Prefs.taskShowStats(ctx)) return ""
+            return try {
+                val span = dev.togar.dynasched.ui.Stats.Span.entries.firstOrNull {
+                    it.name == dev.togar.dynasched.Prefs.taskStatsSpan(ctx)
+                } ?: dev.togar.dynasched.ui.Stats.Span.WEEK
+                val from = dev.togar.dynasched.ui.Stats.from(java.time.LocalDate.now(), span)
+                val rows = dev.togar.dynasched.data.Repo.current(ctx).statRows(ctx)
+                "${span.label}: ${dev.togar.dynasched.ui.Stats.count(rows, from).line()}"
+            } catch (e: Exception) {
+                ""   // 数えられなくてもウィジェット本体は出す
+            }
         }
 
         private fun attachIntents(ctx: Context, views: RemoteViews) {

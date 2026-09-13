@@ -18,13 +18,17 @@ class ViewMenuTest {
         sort: TaskSort = TaskSort.MANUAL,
         done: DoneMode = DoneMode.INLINE,
         tab: TabSource = TabSource.NONE,
-        tags: Int = 0
-    ) = ViewMenu.rows(sort, done, tab, tags)
+        tags: Int = 0,
+        hide: Boolean = false
+    ) = ViewMenu.rows(sort, done, tab, tags, hide, "7日")
 
     @Test
-    fun 節は4つで順番が決まっている() {
+    fun 節の順番が決まっている() {
         val titles = rows().filterIsInstance<ViewMenuRow.Section>().map { it.title }
-        assertEquals(listOf(ViewMenu.SORT, ViewMenu.DONE, ViewMenu.NARROW, ViewMenu.BULK), titles)
+        assertEquals(
+            listOf(ViewMenu.SORT, ViewMenu.DONE, ViewMenu.NARROW, ViewMenu.COUNT, ViewMenu.BULK),
+            titles
+        )
     }
 
     @Test
@@ -64,14 +68,24 @@ class ViewMenuTest {
     fun 操作の行に丸印用の状態を持たせない() {
         // 選ぶ行と押す行を見た目で分けるのが目的なので、混ざっていないこと
         val actions = rows().filterIsInstance<ViewMenuRow.Action>()
-        assertEquals(4, actions.size)
         assertEquals(
             listOf(
-                ViewMenuAction.TagFilter, ViewMenuAction.TabSource,
-                ViewMenuAction.CollapseAll, ViewMenuAction.ExpandAll
+                ViewMenuAction.TagFilter, ViewMenuAction.TabSource, ViewMenuAction.HideGrouped,
+                ViewMenuAction.StatsSpan, ViewMenuAction.CollapseAll, ViewMenuAction.ExpandAll
             ),
             actions.map { it.action }
         )
+    }
+
+    @Test
+    fun 塊を外す設定は今の状態を出す() {
+        // 押すたびに入れ替わる行なので、いまどちらなのかが見えないと押せない
+        val on = rows(hide = true).filterIsInstance<ViewMenuRow.Action>()
+            .first { it.action == ViewMenuAction.HideGrouped }
+        val off = rows(hide = false).filterIsInstance<ViewMenuRow.Action>()
+            .first { it.action == ViewMenuAction.HideGrouped }
+        assertEquals("外す", on.value)
+        assertEquals("出す", off.value)
     }
 
     @Test

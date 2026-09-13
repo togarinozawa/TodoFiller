@@ -268,7 +268,10 @@ object TaskList {
 /** タブの中身を何にするか */
 enum class TabSource(val label: String) {
     NONE("タブを出さない"),
-    GROUP("グループごと"),
+    /** 最上位のグループだけ。入れ子の小グループはタブにしない */
+    TOP("一番上のグループだけ"),
+    /** 子を持つタスクは全部タブにする。深い所の小グループも並ぶ */
+    GROUP("グループごと（入れ子も）"),
     TAG("タグごと");
 
     companion object {
@@ -295,16 +298,21 @@ object TaskTabs {
         if (source == TabSource.NONE) return emptyList()
         val head = TaskTab(ALL, "すべて")
         return when (source) {
-            TabSource.GROUP -> {
-                val hasChild = all.mapNotNullTo(HashSet()) { it.parentId }
-                val groups = all.filter { hasChild.contains(it.id) }
-                    .sortedWith(TaskList.comparator(TaskSort.MANUAL, false))
-                    .map { TaskTab("g:${it.id}", it.name) }
-                listOf(head) + groups
-            }
+            // 入れ子の小グループまで並べると、深いほどタブが増えて探しにくくなる。
+            // 「一番上だけ」はその逃げ道で、島の数＝タブの数になる
+            TabSource.TOP -> listOf(head) + groupTabs(all) { it.parentId == null }
+            TabSource.GROUP -> listOf(head) + groupTabs(all) { true }
             TabSource.TAG -> listOf(head) + Tags.known(all).map { TaskTab("t:$it", "#$it") }
             TabSource.NONE -> emptyList()
         }
+    }
+
+    /** 子を持つタスクをタブにする。[keep] で範囲を絞る */
+    private fun groupTabs(all: List<HobbyItem>, keep: (HobbyItem) -> Boolean): List<TaskTab> {
+        val hasChild = all.mapNotNullTo(HashSet()) { it.parentId }
+        return all.filter { hasChild.contains(it.id) && keep(it) }
+            .sortedWith(TaskList.comparator(TaskSort.MANUAL, false))
+            .map { TaskTab("g:${it.id}", it.name) }
     }
 
     /** そのタブで見せるタスク。キーが古くて当てはまらない時は全部返す */

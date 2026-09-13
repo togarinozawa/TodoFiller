@@ -88,7 +88,27 @@ object NotionSyncer {
         }
     }
 
+    /** いま揃っているべき列の世代。上げると次の同期で不足分を足す */
+    private const val SCHEMA = 2
+
+    /**
+     * Notion側に足りない列を足し、**端末の値を先に押し出す。**
+     *
+     * 列を足した直後のNotion側は当然すべて空。そのまま取り込むと
+     * **端末の色が一斉に消える。**新しい列の持ち主はNotionだが、
+     * 移行の1回だけは端末が勝つようにして、空で上書きされるのを防ぐ。
+     */
+    private fun migrateSchema(ctx: Context, api: NotionApi, ds: String) {
+        if (Prefs.notionSchemaVersion(ctx) >= SCHEMA) return
+        api.ensureSchema(ds)
+        LocalDb.get(ctx).writableDatabase.execSQL(
+            "UPDATE hobby_tasks SET dirty=1 WHERE COALESCE(notion_page_id,'') <> ''"
+        )
+        Prefs.setNotionSchemaVersion(ctx, SCHEMA)
+    }
+
     private fun run(ctx: Context, api: NotionApi, ds: String): SyncResult {
+        migrateSchema(ctx, api, ds)
         val local = readLocal(ctx)
         val remote = api.query(ds)
         val plan = NotionSync.plan(local, remote, full = true, deletedPageIds = tombstones(ctx))
@@ -215,6 +235,7 @@ object NotionSyncer {
                 note = c.str("note"),
                 tags = c.str("tags"),
                 sortOrder = c.int("sort_order"),
+                color = c.str("color"),
                 completed = c.bool("is_completed"),
                 completedAt = c.str("completed_at").ifEmpty { null },
                 scheduledAt = next[id]?.ifEmpty { null }
@@ -235,7 +256,7 @@ object NotionSyncer {
             "name" to r.name, "parent_id" to null,
             "duration_minutes" to r.durationMinutes, "priority" to r.priority,
             "location" to r.location, "note" to r.note, "tags" to r.tags,
-            "sort_order" to r.sortOrder, "is_active" to 1,
+            "sort_order" to r.sortOrder, "color" to r.color, "is_active" to 1,
             "is_completed" to r.completed, "notion_page_id" to r.pageId, "dirty" to 0
         ))
 
@@ -245,7 +266,8 @@ object NotionSyncer {
         db.update("hobby_tasks", values(
             "name" to r.name, "duration_minutes" to r.durationMinutes,
             "priority" to r.priority, "location" to r.location,
-            "note" to r.note, "tags" to r.tags, "sort_order" to r.sortOrder
+            "note" to r.note, "tags" to r.tags, "sort_order" to r.sortOrder,
+            "color" to r.color
         ), "id=?", arrayOf(u.localId.toString()))
     }
 

@@ -217,6 +217,16 @@ object Prefs {
         sp(ctx).edit().putString("notion_pending_delete", key).apply()
     }
 
+    /**
+     * Notion側の列がどこまで揃っているか。上げると次の同期で不足分を足す。
+     * **2: 色の列**を足した版。
+     */
+    fun notionSchemaVersion(ctx: Context): Int = sp(ctx).getInt("notion_schema", 1)
+
+    fun setNotionSchemaVersion(ctx: Context, v: Int) {
+        sp(ctx).edit().putInt("notion_schema", v).apply()
+    }
+
     /** 最後の同期結果の一言。設定画面に出す */
     fun notionLastResult(ctx: Context): String = sp(ctx).getString("notion_last", "") ?: ""
 

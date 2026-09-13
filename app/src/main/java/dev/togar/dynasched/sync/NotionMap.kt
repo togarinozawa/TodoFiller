@@ -1,5 +1,6 @@
 package dev.togar.dynasched.sync
 
+import dev.togar.dynasched.api.CalColor
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -27,6 +28,7 @@ object NotionMap {
     const val DONE_AT = "完了日時"
     const val NEXT = "次の予定"
     const val ORDER = "並び順"
+    const val COLOR = "色"
 
     /** 場所の内部値 ↔ Notionの選択肢 */
     private val PLACES = listOf(
@@ -40,6 +42,24 @@ object NotionMap {
 
     fun placeValue(label: String): String =
         PLACES.firstOrNull { it.second == label }?.first ?: "anywhere"
+
+    /**
+     * カレンダー色。端末は colorId（"" は既定）で持ち、Notionには見て分かる名前で置く。
+     * **空は「選択なし」にする。**「既定」という選択肢を作ると、
+     * 未設定と既定色の区別が付いていないことが見た目に出てしまう。
+     */
+    fun colorLabel(id: String): String =
+        if (id.isEmpty()) "" else CalColor.items.firstOrNull { it.id == id }?.name.orEmpty()
+
+    fun colorValue(label: String): String =
+        CalColor.items.firstOrNull { it.name == label && it.id.isNotEmpty() }?.id.orEmpty()
+
+    /** CalColor の近似HEXに一番近いNotionの色名。選択肢に色を付けるためだけのもの */
+    private val NOTION_COLOR = mapOf(
+        "1" to "purple", "2" to "green", "3" to "purple", "4" to "pink",
+        "5" to "yellow", "6" to "orange", "7" to "blue", "8" to "gray",
+        "9" to "blue", "10" to "green", "11" to "red"
+    )
 
     // ---- 読む ----
 
@@ -58,6 +78,7 @@ object NotionMap {
             note = plainText(p.optJSONObject(NOTE)),
             tags = multiSelect(p.optJSONObject(TAGS)).joinToString(","),
             sortOrder = number(p.optJSONObject(ORDER), 0),
+            color = colorValue(selectName(p.optJSONObject(COLOR))),
             completed = p.optJSONObject(DONE)?.optBoolean("checkbox", false) ?: false,
             scheduledAt = dateStart(p.optJSONObject(NEXT)),
             // in_trash は2025-09-03版の呼び方。古い archived も見る
@@ -125,6 +146,7 @@ object NotionMap {
         p.put(PRIORITY, JSONObject().put("number", t.priority))
         p.put(ORDER, JSONObject().put("number", t.sortOrder))
         p.put(PLACE, JSONObject().put("select", JSONObject().put("name", placeLabel(t.location))))
+        p.put(COLOR, selectOrNull(colorLabel(t.color)))
         p.put(NOTE, JSONObject().put("rich_text", richText(t.note)))
         p.put(DONE, JSONObject().put("checkbox", t.completed))
         p.put(DONE_AT, dateOrNull(t.completedAt))
@@ -174,6 +196,11 @@ object NotionMap {
         return arr
     }
 
+    /** 空なら選択なし。日付と同じで、キーごと省くと「変えない」になり消せなくなる */
+    internal fun selectOrNull(name: String): JSONObject =
+        if (name.isEmpty()) JSONObject().put("select", JSONObject.NULL)
+        else JSONObject().put("select", JSONObject().put("name", name))
+
     /** 空なら `{"date": null}`。キーごと省くと「変えない」になり、消せなくなる */
     internal fun dateOrNull(value: String?): JSONObject {
         val iso = toIso(value) ?: return JSONObject().put("date", JSONObject.NULL)
@@ -215,6 +242,19 @@ object NotionMap {
             )
         )
         .put(TAGS, JSONObject().put("multi_select", JSONObject().put("options", JSONArray())))
+        .put(
+            COLOR, JSONObject().put(
+                "select", JSONObject().put(
+                    "options", JSONArray().apply {
+                        for (c in CalColor.items) {
+                            if (c.id.isEmpty()) continue
+                            put(JSONObject().put("name", c.name)
+                                .put("color", NOTION_COLOR[c.id] ?: "default"))
+                        }
+                    }
+                )
+            )
+        )
         .put(NOTE, JSONObject().put("rich_text", JSONObject()))
         .put(DONE, JSONObject().put("checkbox", JSONObject()))
         .put(DONE_AT, JSONObject().put("date", JSONObject()))

@@ -34,6 +34,7 @@ data class NotionTask(
     val note: String = "",
     val tags: String = "",
     val sortOrder: Int = 0,
+    val color: String = "",
     val completed: Boolean = false,
     /** スキマスが書き戻した「次にこの予定に入っている時刻」。読むのは突き合わせのためだけ */
     val scheduledAt: String? = null,
@@ -56,6 +57,7 @@ data class LocalTask(
     val note: String = "",
     val tags: String = "",
     val sortOrder: Int = 0,
+    val color: String = "",
     val completed: Boolean = false,
     /** 完了した時刻。Notionへ書くだけで、突き合わせには使わない */
     val completedAt: String? = null,
@@ -210,7 +212,8 @@ object NotionSync {
             mine.location != r.location ||
             mine.note != r.note ||
             mine.tags != r.tags ||
-            mine.sortOrder != r.sortOrder
+            mine.sortOrder != r.sortOrder ||
+            mine.color != r.color
 
     /**
      * 持ち主がスキマスの項目に違いがあるか。

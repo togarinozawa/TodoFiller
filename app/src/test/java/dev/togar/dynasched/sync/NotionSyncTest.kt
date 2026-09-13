@@ -179,6 +179,17 @@ class NotionSyncTest {
         assertTrue(p.updateLocal.isEmpty())
     }
 
+    @Test
+    fun 色の違いも取り込む対象にする() {
+        val p = NotionSync.plan(
+            local = listOf(LocalTask(id = 1, notionPageId = "p1", name = "やること", color = "")),
+            remote = listOf(NotionTask(pageId = "p1", name = "やること", color = "11")),
+            full = true
+        )
+        assertEquals(listOf(1L), p.updateLocal.map { it.localId })
+        assertEquals("11", p.updateLocal[0].from.color)
+    }
+
     // ---- 親子 ----
 
     @Test

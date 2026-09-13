@@ -92,7 +92,7 @@ class NotionApi(private val token: String) {
      * 足りない列を足す。既にある列には触らない（利用者が広げた設定を壊さないため）。
      * 「親タスク」は自分自身を指すので、ここで初めて相手のIDが分かる。
      */
-    private fun ensureSchema(dataSourceId: String) {
+    fun ensureSchema(dataSourceId: String) {
         val ds = request("GET", "$BASE/data_sources/$dataSourceId", null)
         val have = ds.optJSONObject("properties") ?: JSONObject()
         val missing = JSONObject()

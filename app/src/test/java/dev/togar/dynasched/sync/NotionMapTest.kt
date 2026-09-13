@@ -168,6 +168,34 @@ class NotionMapTest {
     }
 
     @Test
+    fun 色は名前で置いて読み戻す() {
+        val props = JSONObject().put(NotionMap.COLOR,
+            JSONObject().put("select", JSONObject().put("name", "トマト")))
+        assertEquals("11", NotionMap.readPage(page(props))!!.color)
+        // Notionで選択肢を増やされた時。知らない名前は既定に寄せる
+        val odd = JSONObject().put(NotionMap.COLOR,
+            JSONObject().put("select", JSONObject().put("name", "蛍光ピンク")))
+        assertEquals("", NotionMap.readPage(page(odd))!!.color)
+    }
+
+    @Test
+    fun 色が空なら選択なしとして送る() {
+        // キーごと省くと「変えない」になり、一度付けた色を外せなくなる
+        val o = NotionMap.selectOrNull("")
+        assertTrue(o.has("select"))
+        assertEquals(JSONObject.NULL, o.get("select"))
+        assertEquals("トマト", NotionMap.colorLabel("11"))
+        assertEquals("", NotionMap.colorLabel(""))
+    }
+
+    @Test
+    fun 色の書き出しが送る形に入っている() {
+        val props = NotionMap.writeProperties(LocalTask(id = 1, color = "5"), null)
+        assertEquals("バナナ",
+            props.getJSONObject(NotionMap.COLOR).getJSONObject("select").getString("name"))
+    }
+
+    @Test
     fun 場所は日本語の選択肢と行き来する() {
         assertEquals("どこでも", NotionMap.placeLabel("anywhere"))
         assertEquals("out", NotionMap.placeValue("外のみ"))
@@ -181,6 +209,7 @@ class NotionMapTest {
         val schema = NotionMap.initialSchema()
         assertTrue(schema.has(NotionMap.NAME))
         assertTrue(schema.has(NotionMap.DONE))
+        assertTrue(schema.has(NotionMap.COLOR))
         assertFalse(schema.has(NotionMap.PARENT))
     }
 

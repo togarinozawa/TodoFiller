@@ -263,6 +263,16 @@
             android:textColor="@color/on_bg_dim"
             android:textSize="12sp" />
 
+        <!-- 同期でDBを書き換える直前の控え。事故った時に直前へ戻す道 -->
+        <Button
+            android:id="@+id/snapshotButton"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="同期前の控えから戻す"
+            android:textColor="@color/primary" />
+
         <Button
             android:id="@+id/notionDisconnectButton"
             style="?attr/materialButtonOutlinedStyle"

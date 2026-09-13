@@ -36,6 +36,25 @@ class NotionApi(private val token: String) {
 
         /** 1回の問い合わせで取る件数。Notionの上限は100 */
         private const val PAGE_SIZE = 100
+
+        /**
+         * 要求の間隔。**Notionは平均で秒間3件まで。**初回同期は全タスクを
+         * 1件ずつ作るので、詰めて投げると途中から429で落ちる。
+         * 少し余裕を見て3件/秒より遅くしてある。
+         */
+        private const val MIN_INTERVAL_MS = 360L
+
+        /** 最後に投げた時刻。プロセス内で共有する（同期は1本ずつしか走らない） */
+        @Volatile private var lastRequestAt = 0L
+
+        @Synchronized
+        private fun pace() {
+            val wait = lastRequestAt + MIN_INTERVAL_MS - System.currentTimeMillis()
+            if (wait > 0) try { Thread.sleep(wait) } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+            lastRequestAt = System.currentTimeMillis()
+        }
     }
 
     // ---- 接続と作成 ----
@@ -209,7 +228,25 @@ class NotionApi(private val token: String) {
 
     // ---- 低レベル ----
 
-    private fun request(method: String, url: String, body: JSONObject?): JSONObject {
+    /**
+     * 1回だけやり直す。**429は待てば通る**ので、そこで同期全体を落とすのは惜しい。
+     * Retry-After が来ていればそれに従う。
+     */
+    private fun request(method: String, url: String, body: JSONObject?): JSONObject = try {
+        send(method, url, body)
+    } catch (e: ApiException) {
+        if (e.code != 429) throw e
+        try { Thread.sleep(retryAfterMs) } catch (i: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+        send(method, url, body)
+    }
+
+    /** 直近の429が指定してきた待ち時間。無ければ既定 */
+    @Volatile private var retryAfterMs = 2000L
+
+    private fun send(method: String, url: String, body: JSONObject?): JSONObject {
+        pace()
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.requestMethod = method
         conn.connectTimeout = 20000
@@ -230,6 +267,10 @@ class NotionApi(private val token: String) {
             val text = stream?.let {
                 BufferedReader(InputStreamReader(it, Charsets.UTF_8)).use { r -> r.readText() }
             }.orEmpty()
+            if (code == 429) {
+                retryAfterMs = (conn.getHeaderField("Retry-After")?.toLongOrNull()?.times(1000))
+                    ?.coerceIn(1000L, 30000L) ?: 2000L
+            }
             if (code !in 200..299) {
                 throw ApiException(code, describe(code, text), friendly = true)
             }

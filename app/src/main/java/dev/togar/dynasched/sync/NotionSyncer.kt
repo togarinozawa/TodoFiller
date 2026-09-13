@@ -143,6 +143,12 @@ object NotionSyncer {
         }
         Prefs.setNotionPendingDelete(ctx, "")
 
+        // 端末を書き換えるなら、その前に控えを1枚。
+        // **判断を間違えた時に戻せるかどうかは、判断を直すのとは別の話**（v36の全消し）
+        if (plan.insertLocal.isNotEmpty() || plan.updateLocal.isNotEmpty() || toDelete.isNotEmpty()) {
+            dev.togar.dynasched.data.Snapshots.save(ctx, "同期前")
+        }
+
         // 1. Notion発の取り込み。親を繋ぐのは全部の行が出来てから
         db.beginTransaction()
         try {

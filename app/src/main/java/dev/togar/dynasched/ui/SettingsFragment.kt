@@ -187,6 +187,8 @@ class SettingsFragment : Fragment() {
 
         syncBtn.setOnClickListener { syncNow(status) }
 
+        root.findViewById<Button>(R.id.snapshotButton).setOnClickListener { showSnapshots() }
+
         disconnectBtn.setOnClickListener {
             androidx.appcompat.app.AlertDialog.Builder(ctx)
                 .setTitle("同期をやめる")
@@ -202,6 +204,49 @@ class SettingsFragment : Fragment() {
                 .setNegativeButton("戻る", null)
                 .show()
         }
+    }
+
+    /**
+     * 同期前の控えから戻す。
+     *
+     * **控えは同期がDBを書き換える直前にだけ取っている。**
+     * 戻すと、その時点以降に端末でやったことは消える。取り返しが付かないので確認を挟む。
+     */
+    private fun showSnapshots() {
+        val ctx = requireContext()
+        val files = dev.togar.dynasched.data.Snapshots.list(ctx)
+        if (files.isEmpty()) {
+            Toast.makeText(ctx, "控えはまだありません（同期で書き換えた時に取ります）",
+                Toast.LENGTH_LONG).show()
+            return
+        }
+        val labels = files.map { dev.togar.dynasched.data.Snapshots.label(it) }.toTypedArray()
+        androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setTitle("同期前の控え")
+            .setItems(labels) { _, i -> confirmSnapshot(files[i], labels[i]) }
+            .setNegativeButton("閉じる", null)
+            .show()
+    }
+
+    private fun confirmSnapshot(file: java.io.File, label: String) {
+        val ctx = requireContext()
+        androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setTitle("この控えに戻しますか")
+            .setMessage("$label の状態に戻します。" +
+                "それ以降に端末でやったことは消えます。元に戻せません。")
+            .setPositiveButton("戻す") { _, _ ->
+                Api.async({ dev.togar.dynasched.data.Snapshots.restore(ctx, file) }, { r ->
+                    if (!isAdded) return@async
+                    Toast.makeText(ctx,
+                        "戻しました（タスク${r.hobbies}件・教材${r.materials}件）",
+                        Toast.LENGTH_LONG).show()
+                }, { e ->
+                    if (!isAdded) return@async
+                    Toast.makeText(ctx, "失敗: " + Api.friendlyMessage(e), Toast.LENGTH_LONG).show()
+                })
+            }
+            .setNegativeButton("やめる", null)
+            .show()
     }
 
     private fun syncNow(status: TextView) {

@@ -1,0 +1,6 @@
+{
+  "version_code": 41,
+  "version_name": "41.0",
+  "url": "https://raw.githubusercontent.com/togarinozawa/TodoFiller/dist/skimas41.apk",
+  "notes": "どのタブでも並べ替えできるように。フッターを「タスク」「予定」に改名。「今日」に進み具合の帯（片付けた数・連続日数・直近7日）。「すべて」ではグループを下へ。予定画面のカレンダーを削除。"
+}

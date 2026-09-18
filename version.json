@@ -1,0 +1,6 @@
+{
+  "version_code": 42,
+  "version_name": "42.0",
+  "url": "https://raw.githubusercontent.com/togarinozawa/TodoFiller/dist/skimas42.apk",
+  "notes": "今日の目標（自動で自分の記録から決まる・押して変更可）。残りが少なくなると数字が「あと何件」に切り替わる。今日片付けたものを名前で表示。4週間の記録。連続日数は週1日の休みでは折れない。グループの要約も「あと何件」に。"
+}

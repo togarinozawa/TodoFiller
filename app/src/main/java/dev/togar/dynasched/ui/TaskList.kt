@@ -224,9 +224,12 @@ object TaskList {
      * @param rows 見た目の並び（動かした後）。moved は dropIndex に居る
      * @param all  全タスク。畳んで見えていない子も含めて数える必要がある
      * @param desiredLevel 横のずれから割り出した段。ここでは上の行より深くならないよう丸める
+     * @param rootParentId 0段目の行の親。「すべて」やタグのタブでは null、
+     *   塊のタブではその塊（タブの中で一番浅く置いても、塊の外へは出ない）
      */
     fun dropTarget(
-        rows: List<TaskRow>, all: List<HobbyItem>, dropIndex: Int, desiredLevel: Int
+        rows: List<TaskRow>, all: List<HobbyItem>, dropIndex: Int, desiredLevel: Int,
+        rootParentId: Long? = null
     ): Drop? {
         val moved = rows.getOrNull(dropIndex)?.item ?: return null
         val subtree = subtreeIds(all, moved.id)
@@ -238,17 +241,42 @@ object TaskList {
         val level = desiredLevel.coerceIn(0, if (above == null) 0 else above.level + 1)
 
         val parentId: Long? =
-            if (level == 0) null
+            if (level == 0) rootParentId
             else aboveRows.lastOrNull { it.level == level - 1 }?.item?.id ?: return null
         if (parentId != null && parentId in subtree) return null
 
-        // 兄弟の並び。畳まれていて見えていない子は見える分の後ろへ回す
+        // 見えている兄弟は、見えている通りの並びにする
         val visible = rows.filter { it.item.id == moved.id || it.item.parentId == parentId }
             .map { it.item.id }
             .filter { it == moved.id || it !in subtree }
-        val hidden = all.filter { it.parentId == parentId && it.id !in visible && it.id !in subtree }
-            .map { it.id }
-        return Drop(parentId, visible + hidden, level)
+        return Drop(parentId, mergeHidden(visible, all, parentId, moved.id), level)
+    }
+
+    /**
+     * 見えていない兄弟（畳んだ・タグやタブで絞った・完了を隠した）を並びへ戻す。
+     *
+     * **元の並びで直前にいた見えている兄弟の後ろへ戻す。**まとめて末尾へ回すと、
+     * タグのタブで1件動かしただけで「すべて」の並びが崩れる。
+     */
+    private fun mergeHidden(
+        visible: List<Long>, all: List<HobbyItem>, parentId: Long?, movedId: Long
+    ): List<Long> {
+        val visibleSet = visible.toHashSet()
+        val old = all.filter { it.parentId == parentId && it.id != movedId }
+            .sortedWith(comparator(TaskSort.MANUAL, false))
+        val front = ArrayList<Long>()
+        val after = HashMap<Long, MutableList<Long>>()
+        var anchor: Long? = null
+        for (t in old) {
+            if (t.id in visibleSet) { anchor = t.id; continue }
+            if (anchor == null) front.add(t.id) else after.getOrPut(anchor) { ArrayList() }.add(t.id)
+        }
+        val out = ArrayList<Long>(front)
+        for (id in visible) {
+            out.add(id)
+            after[id]?.let { out.addAll(it) }
+        }
+        return out
     }
 
     /**
@@ -286,8 +314,11 @@ data class TaskTab(val key: String, val label: String)
  * タスクをグループ／タグで横に並べる。
  *
  * 木を深く辿るより、まず「どの塊の話か」を選ぶほうが速い場面がある。
- * ただし**塊を選んでいる間は全体が見えない**ので、階層をいじる操作は
- * 「すべて」タブに限る（見えていない場所へタスクが飛ぶ事故を作らないため）。
+ * 塊のタブの中で動かしても**塊の外へは出さない**（[TaskList.dropTarget] の rootParentId）。
+ * 見えていない場所へタスクが飛んで「消えた」ように見える事故を作らないため。
+ *
+ * タブの左右の並びは本人が決められる（[applyOrder]）。タスクの並びとは別に持つ。
+ * 塊の並びを変えるたびに「すべて」の並びまで動くと、そちらで決めた順が崩れるため。
  */
 object TaskTabs {
 
@@ -362,6 +393,27 @@ object TaskTabs {
         if (subs.isEmpty()) return emptyList()
         // 先頭は「この塊ぜんぶ」。下段を出した時に全体へ戻れなくなるのを防ぐ
         return listOf(TaskTab(key, "ぜんぶ")) + subs.map { TaskTab("g:${it.id}", it.name) }
+    }
+
+    /**
+     * 決めておいたタブの並びを当てる。先頭の [fixedHead] 個（「すべて」「ぜんぶ」）は動かさない。
+     * 並びを決めた後に増えたタブは、元の順のまま後ろに付ける。
+     */
+    fun applyOrder(list: List<TaskTab>, order: List<String>, fixedHead: Int = 1): List<TaskTab> {
+        if (order.isEmpty() || list.size <= fixedHead) return list
+        val rank = order.withIndex().associate { it.value to it.index }
+        val head = list.take(fixedHead)
+        val (known, fresh) = list.drop(fixedHead).partition { rank.containsKey(it.key) }
+        return head + known.sortedBy { rank.getValue(it.key) } + fresh
+    }
+
+    /**
+     * 並べ替えた結果を、保存してある並びへ書き戻す。
+     * いま出ていないタブ（別の見せ方のタブ・別の塊の下段）の並びは消さずに後ろへ残す。
+     */
+    fun saveOrder(saved: List<String>, reordered: List<String>): List<String> {
+        val now = reordered.toHashSet()
+        return reordered + saved.filterNot { it in now }
     }
 
     /** そのタブが指している塊のID。塊タブでなければ null（追加先を決めるのに使う） */

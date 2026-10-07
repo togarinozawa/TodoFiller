@@ -238,6 +238,54 @@ class TaskListTest {
     }
 
     @Test
+    fun `塊のタブで一番浅く置いても塊の外へは出ない`() {
+        // 「親」のタブを開いている。子1(と孫)・子2 が0段目に並ぶ
+        val inTab = TaskTabs.apply(tree, "g:1")
+        val rows = TaskList.build(inTab, TaskSort.MANUAL, emptySet(), DoneMode.INLINE)  // 子1,孫,子2
+        val after = moved(rows, rows.indexOfFirst { it.item.name == "子2" }, 0)        // 子2,子1,孫
+        val drop = TaskList.dropTarget(after, tree, 0, 0, rootParentId = 1L)!!
+        assertEquals(1L, drop.parentId)
+        assertEquals(listOf(3L, 2L), drop.siblingIds)
+    }
+
+    @Test
+    fun `塊のタブで孫を0段目へ出すと、塊の直下に来る`() {
+        val inTab = TaskTabs.apply(tree, "g:1")
+        val rows = TaskList.build(inTab, TaskSort.MANUAL, emptySet(), DoneMode.INLINE)  // 子1,孫,子2
+        val mago = rows.indexOfFirst { it.item.name == "孫" }
+        val drop = TaskList.dropTarget(rows, tree, mago, 0, rootParentId = 1L)!!
+        assertEquals(1L, drop.parentId)
+        assertEquals(listOf(2L, 4L, 3L), drop.siblingIds)
+    }
+
+    @Test
+    fun `絞って見えていない兄弟は元の位置のまま残る`() {
+        // A,B,C,D のうち A と C だけが見えている（タグで絞った等）。C を A の上へ
+        val four = listOf(task(1, "A", order = 1), task(2, "B", order = 2),
+            task(3, "C", order = 3), task(4, "D", order = 4))
+        val shown = four.filter { it.id == 1L || it.id == 3L }
+        val rows = moved(TaskList.build(shown, TaskSort.MANUAL, emptySet(), DoneMode.INLINE), 1, 0)  // C,A
+        val drop = TaskList.dropTarget(rows, four, 0, 0)!!
+        // B は A の後ろ、D は C の後ろ（元の並びで直前にいた見えている兄弟の後ろ）に付く
+        assertEquals(listOf(3L, 1L, 2L, 4L), drop.siblingIds)
+    }
+
+    @Test
+    fun `タブの並びを当てる。先頭は動かさず、新しいタブは後ろ`() {
+        val tabs = listOf(TaskTab("", "すべて"), TaskTab("g:1", "仕事"),
+            TaskTab("g:2", "家事"), TaskTab("g:3", "趣味"))
+        val r = TaskTabs.applyOrder(tabs, listOf("g:2", "g:1"))
+        assertEquals(listOf("", "g:2", "g:1", "g:3"), r.map { it.key })
+        assertEquals(tabs, TaskTabs.applyOrder(tabs, emptyList()))
+    }
+
+    @Test
+    fun `タブの並びを書き戻しても、出ていないタブの並びは残る`() {
+        val saved = listOf("t:買い物", "g:1", "g:2")
+        assertEquals(listOf("g:2", "g:1", "t:買い物"), TaskTabs.saveOrder(saved, listOf("g:2", "g:1")))
+    }
+
+    @Test
     fun `優先度順で動かすと落とした先の優先度になる`() {
         val list = listOf(
             task(1, "高1", priority = 8), task(2, "高2", priority = 8),

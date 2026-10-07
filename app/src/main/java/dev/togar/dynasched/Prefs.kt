@@ -194,6 +194,14 @@ object Prefs {
         sp(ctx).edit().putString("task_tab", key).apply()
     }
 
+    /** タブの左右の並び（タブのキーを並べたもの）。決めていなければ空 */
+    fun taskTabOrder(ctx: Context): List<String> =
+        (sp(ctx).getString("task_tab_order", "") ?: "").split('\n').filter { it.isNotEmpty() }
+
+    fun setTaskTabOrder(ctx: Context, keys: List<String>) {
+        sp(ctx).edit().putString("task_tab_order", keys.joinToString("\n")).apply()
+    }
+
     /** 一覧を絞り込んでいるタグ。空なら絞らない */
     fun tagFilter(ctx: Context): Set<String> =
         sp(ctx).getStringSet("task_tag_filter", emptySet()).orEmpty()

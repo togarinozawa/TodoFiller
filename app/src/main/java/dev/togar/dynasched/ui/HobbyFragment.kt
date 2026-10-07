@@ -198,6 +198,7 @@ class HobbyFragment : Fragment() {
                 is ViewMenuAction.Done -> Prefs.setTaskDoneMode(ctx, action.mode.name)
                 ViewMenuAction.TagFilter -> { showTagFilter(); return@show }
                 ViewMenuAction.TabSource -> { showTabSource(); return@show }
+                ViewMenuAction.TabOrder -> { showTabOrder(subRow = false); return@show }
                 ViewMenuAction.HideGrouped ->
                     Prefs.setTaskAllHidesGrouped(ctx, !Prefs.taskAllHidesGrouped(ctx))
                 ViewMenuAction.StatsSpan -> { showStatsSpan(); return@show }
@@ -326,7 +327,7 @@ class HobbyFragment : Fragment() {
     private fun rebuildTabs() {
         val ctx = requireContext()
         val source = TabSource.from(Prefs.taskTabSource(ctx))
-        val list = TaskTabs.tabs(loaded, source)
+        val list = TaskTabs.applyOrder(TaskTabs.tabs(loaded, source), Prefs.taskTabOrder(ctx))
         if (list.isEmpty()) {
             tabs.visibility = View.GONE
             tabs.removeAllTabs()
@@ -339,6 +340,8 @@ class HobbyFragment : Fragment() {
             val tab = tabs.newTab().setText(t.label)
             tab.tag = t.key
             tabs.addTab(tab, t.key == selected)
+            // 長押しでタブの並びを変える
+            tab.view.setOnLongClickListener { showTabOrder(subRow = false); true }
         }
         rebuildingTabs = false
         tabs.visibility = View.VISIBLE
@@ -347,7 +350,9 @@ class HobbyFragment : Fragment() {
 
     /** 塊の中に小グループがある時だけ、下段を出す */
     private fun rebuildSubTabs() {
-        val list = TaskTabs.subTabs(loaded, currentTab())
+        val list = TaskTabs.applyOrder(
+            TaskTabs.subTabs(loaded, currentTab()), Prefs.taskTabOrder(requireContext())
+        )
         if (list.isEmpty()) {
             subTabs.visibility = View.GONE
             subTabs.removeAllTabs()
@@ -362,6 +367,7 @@ class HobbyFragment : Fragment() {
             tab.tag = t.key
             // 空 = 塊ぜんぶ。先頭がそれに当たる
             subTabs.addTab(tab, t.key == subTabKey || (subTabKey.isEmpty() && t == list.first()))
+            tab.view.setOnLongClickListener { showTabOrder(subRow = true); true }
         }
         rebuildingTabs = false
         subTabs.visibility = View.VISIBLE
@@ -420,6 +426,38 @@ class HobbyFragment : Fragment() {
 
     // ---- つかんで動かす ----
 
+    /**
+     * いま開いているタブで、一番浅く置いた時の親。
+     * 塊のタブ（下段で小グループを選んでいればそちら）ならその塊、それ以外は最上位。
+     */
+    private fun dropRoot(): Long? {
+        val tabKey = currentTab()
+        val effective = if (subTabKey.isNotEmpty() && subTabKey != tabKey) subTabKey else tabKey
+        return TaskTabs.groupIdOf(effective)
+    }
+
+    // ---- タブの並び ----
+
+    /**
+     * タブの左右の並びを変える。上段と下段は別々に並べる。
+     * 先頭の「すべて」「ぜんぶ」は動かさない（いつも同じ場所にある方が戻りやすい）。
+     */
+    private fun showTabOrder(subRow: Boolean) {
+        val ctx = requireContext()
+        val order = Prefs.taskTabOrder(ctx)
+        val list = if (subRow) TaskTabs.applyOrder(TaskTabs.subTabs(loaded, currentTab()), order)
+            else TaskTabs.applyOrder(TaskTabs.tabs(loaded, TabSource.from(Prefs.taskTabSource(ctx))), order)
+        val movable = list.drop(1)
+        if (movable.size < 2) {
+            Toast.makeText(ctx, "並べ替えるほどタブがありません", Toast.LENGTH_SHORT).show()
+            return
+        }
+        TabOrderDialog.show(requireActivity(), if (subRow) "下段のタブの並び" else "タブの並び", movable) { keys ->
+            Prefs.setTaskTabOrder(ctx, TaskTabs.saveOrder(Prefs.taskTabOrder(ctx), keys))
+            if (subRow) rebuildSubTabs() else rebuildTabs()
+        }
+    }
+
     /** つかんだ時の段。横のずれと足して落とし先の段を出す */
     private var dragBaseLevel = 0
     /** いま指が示している段 */
@@ -447,10 +485,7 @@ class HobbyFragment : Fragment() {
         override fun isItemViewSwipeEnabled(): Boolean = false
 
         override fun getMovementFlags(rv: RecyclerView, holder: RecyclerView.ViewHolder): Int {
-            // タブで塊を選んでいる間は全体が見えていない。そこで階層をいじると、
-            // いま見えていない場所へタスクが飛んで「消えた」ように見える。
-            // 並び替えも階層変更も「すべて」タブに限る。
-            if (currentTab() != TaskTabs.ALL) return 0
+            // どのタブでも動かせる。塊のタブでは塊の外へは出さない（dropRoot）
             // **LEFT/RIGHT を入れないと横のずれが取れない。**
             // ItemTouchHelper は許可されていない向きの移動量を 0 に丸めるので、
             // 上下だけを許可していると onChildDraw に来る dX が常に 0 になり、
@@ -581,7 +616,7 @@ class HobbyFragment : Fragment() {
     private fun applyDrop(dropIndex: Int, level: Int) {
         val rows = adapter.rows()
         val moved = rows.getOrNull(dropIndex)?.item ?: return
-        val drop = TaskList.dropTarget(rows, loaded, dropIndex, level)
+        val drop = TaskList.dropTarget(rows, loaded, dropIndex, level, dropRoot())
         if (drop == null) {
             Toast.makeText(requireContext(), "そこには置けません", Toast.LENGTH_SHORT).show()
             render(); return

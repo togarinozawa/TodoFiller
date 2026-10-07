@@ -32,7 +32,7 @@ object Backup {
     private val TABLES = listOf("materials", "attempts", "hobby_tasks")
 
     /** 一緒に控える設定。カレンダーIDは端末ごとに違うので入れない */
-    private val PREF_KEYS = listOf("fill_days", "task_sort", "task_done_mode", "places", "owner_mode")
+    private val PREF_KEYS = listOf("fill_days", "task_sort", "task_done_mode", "places", "owner_mode", "task_tab_order")
 
     data class Report(val materials: Int, val attempts: Int, val hobbies: Int)
 
@@ -87,6 +87,7 @@ object Backup {
         o.put("places", dev.togar.dynasched.Places.toJson(dev.togar.dynasched.Places.all(ctx)))
         // 本人の端末を入れ直した時に、テスト版の受け取りが黙って止まらないように
         o.put("owner_mode", Prefs.ownerMode(ctx))
+        o.put("task_tab_order", org.json.JSONArray(Prefs.taskTabOrder(ctx)))
         return o
     }
 
@@ -170,6 +171,9 @@ object Backup {
                 "task_sort" -> Prefs.setTaskSort(ctx, o.optString(key, "MANUAL"))
                 "task_done_mode" -> Prefs.setTaskDoneMode(ctx, o.optString(key, "INLINE"))
                 "owner_mode" -> Prefs.setOwnerMode(ctx, o.optBoolean(key, false))
+                "task_tab_order" -> o.optJSONArray(key)?.let { a ->
+                    Prefs.setTaskTabOrder(ctx, (0 until a.length()).map { a.optString(it) })
+                }
                 "places" -> o.optJSONArray(key)?.let {
                     dev.togar.dynasched.Places.save(ctx, dev.togar.dynasched.Places.parse(it.toString()))
                 }

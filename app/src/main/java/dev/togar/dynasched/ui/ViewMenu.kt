@@ -42,6 +42,7 @@ sealed class ViewMenuAction {
     data class Done(val mode: DoneMode) : ViewMenuAction()
     object TagFilter : ViewMenuAction()
     object TabSource : ViewMenuAction()
+    object TabOrder : ViewMenuAction()
     object HideGrouped : ViewMenuAction()
     object StatsSpan : ViewMenuAction()
     object CollapseAll : ViewMenuAction()
@@ -96,6 +97,12 @@ object ViewMenu {
                 value = tabSource.label, opensDialog = true
             )
         )
+        // タブを長押ししても開ける。メニューにも置くのは、長押しに気付かない人のため
+        if (tabSource != dev.togar.dynasched.ui.TabSource.NONE) {
+            rows.add(
+                ViewMenuRow.Action(ViewMenuAction.TabOrder, "タブの並びを変える", opensDialog = true)
+            )
+        }
 
         rows.add(
             ViewMenuRow.Action(

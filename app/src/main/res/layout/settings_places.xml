@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 場所の一覧。家と外は消せない（昔からのタスクと枠が指しているため） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="カレンダーの予定の題名の末尾に場所の名前を付けると、その場所で作業できる枠になります（例:「放課後 学校」）。タスクごとに「どこでも」か「〇〇のみ」を選べます。"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="12sp" />
+
+    <LinearLayout
+        android:id="@+id/placeList"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@color/surface"
+        android:orientation="vertical" />
+
+    <Button
+        android:id="@+id/addPlaceButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:backgroundTint="@color/primary"
+        android:text="場所を足す"
+        android:textColor="@color/white" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="家と外は名前を変えられますが、消せません。名前を変えても、末尾が「家」「&amp;h」「外」「&amp;o」の予定はそのまま読みます。\n\nよくある言葉（「室」など）を名前にすると、普通の予定まで枠として読まれます。「カレンダーの読み取りを確認」で確かめてください。"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="11sp" />
+
+</LinearLayout>

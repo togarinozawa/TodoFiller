@@ -105,6 +105,18 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
     }
 
     /**
+     * **版が下がっても落とさない。**既定の動きは例外で、起動するたびに強制終了する。
+     *
+     * v41〜v46 のソースは失われ、v40 から作り直している。配布済みの v46 は DB を 7 まで
+     * 上げていて（hobby_tasks.routine_id・scheduled_events.is_manual を足した）、
+     * v40 系の版を上から入れると「7 → こちらの版」の下げになる。
+     * スキーマは「無ければ足す」だけで積んでいるので、余分な列やテーブルは残したまま読める。
+     */
+    override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        onCreate(db)
+    }
+
+    /**
      * 列の追加。サーバー側と同じく「無ければ足す」の冪等ブロックで積む。
      * `onCreate` からも呼ぶので、新規作成でも更新でも同じ形になる。
      */
@@ -128,8 +140,10 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
          * 2: hobby_tasks.sort_order（手動の並び順） / 3: hobby_tasks.tags
          * 4: Notion同期の対応付け（notion_page_id・dirty）と notion_tombstones
          * 5: hobby_tasks.created_at（増えた数を数えるため）
+         * 6・7: 失われた v41〜v46 が使った番号。**使い回さない**（配布済みの端末に 7 がある）
+         * 8: v40 系へ戻した版。中身は 5 と同じで、v46 の DB から上げられるように番号だけ飛ばした
          */
-        private const val VERSION = 5
+        private const val VERSION = 8
 
         /** (テーブル, 列, 定義) */
         private val MIGRATIONS = listOf(

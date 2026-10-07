@@ -348,6 +348,21 @@ object LocalRepo : Repo {
         NotionSyncer.syncSoon(ctx)
     }
 
+    override fun countHobbiesAt(ctx: Context, location: String): Int =
+        LocalDb.get(ctx).readableDatabase.rawQuery(
+            "SELECT COUNT(*) n FROM hobby_tasks WHERE location=?", arrayOf(location)
+        ).mapRows { it.int("n") }.firstOrNull() ?: 0
+
+    override fun moveHobbiesLocation(ctx: Context, from: String, to: String) {
+        val db = LocalDb.get(ctx).writableDatabase
+        val ids = db.rawQuery("SELECT id FROM hobby_tasks WHERE location=?", arrayOf(from))
+            .mapRows { it.long("id") }
+        if (ids.isEmpty()) return
+        if (from != to) db.execSQL("UPDATE hobby_tasks SET location=? WHERE location=?", arrayOf(to, from))
+        ids.forEach { NotionSyncer.markDirty(ctx, it) }
+        NotionSyncer.syncSoon(ctx)
+    }
+
     override fun applyToSubtree(
         ctx: Context, parentId: Long,
         priority: Int?, location: String?, color: String?, tags: String?

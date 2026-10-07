@@ -58,6 +58,16 @@ interface Repo {
     /** 優先度だけを変える（優先度順で並び替えたとき） */
     fun setHobbyPriority(ctx: Context, id: Long, priority: Int)
 
+    /** その場所を指しているタスクの数（完了したものも含む） */
+    fun countHobbiesAt(ctx: Context, location: String): Int
+
+    /**
+     * その場所のタスクをまとめて別の場所へ移す。場所を消した時に使う。
+     * [from] と [to] が同じなら中身は変えず、Notionへ押し返す印だけ付ける
+     * （場所の名前を変えると、Notionの選択肢の名前も変わるため）。
+     */
+    fun moveHobbiesLocation(ctx: Context, from: String, to: String)
+
     /**
      * 親の設定を配下のタスクへまとめて適用する。null を渡した項目は触らない。
      *

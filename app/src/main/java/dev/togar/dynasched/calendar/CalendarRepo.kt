@@ -20,8 +20,8 @@ import java.util.TimeZone
  * 分類ルールはサーバー版（googleCalendar.syncAvailabilityFromPrimary）と同一:
  * - 末尾が `%` … スキマスの自動生成。読み飛ばす（同期のたびに作り直すため）
  * - 「テスト期間」で始まる … その期間は定期テストONの教材だけを配置
- * - 末尾が `外` / `&o` … 外でも作業できる枠
- * - 末尾が `家` / `&h` … 家で作業できる枠
+ * - 末尾が場所の名前 … その場所で作業できる枠（[dev.togar.dynasched.Places]）。
+ *   家は `家` / `&h`、外は `外` / `&o` も読む。設定で足した場所は名前そのものが印
  * - タグ無しの**終日**予定（祝日など）… 何もしない。busy にしない
  * - タグ無しの時間指定予定 … busy（埋まっている）
  */
@@ -44,10 +44,6 @@ object CalendarRepo {
         CalendarContract.Calendars.IS_PRIMARY,
         CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL
     )
-
-    private val TAG_OUT = Regex("(&o|外)\\s*$", RegexOption.IGNORE_CASE)
-    private val TAG_HOME = Regex("(&h|家)\\s*$", RegexOption.IGNORE_CASE)
-    private val TAG_ANY = Regex("(&[oh]|外|家)\\s*$", RegexOption.IGNORE_CASE)
 
     /** 末尾に付けるとスキマスの自動生成とみなされる印 */
     const val GENERATED_SUFFIX = "%"
@@ -155,6 +151,7 @@ object CalendarRepo {
         val busy = ArrayList<BusyBlock>()
         val exams = ArrayList<ExamPeriod>()
         var skipped = 0
+        val places = dev.togar.dynasched.Places.all(ctx)
 
         val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().apply {
             ContentUris.appendId(this, dayStart)
@@ -171,7 +168,8 @@ object CalendarRepo {
                     beginMs = c.getLong(2),
                     endMs = c.getLong(3),
                     allDay = c.getInt(4) == 1,
-                    eventId = c.getLong(0)
+                    eventId = c.getLong(0),
+                    places = places
                 )) {
                     is CalEntry.Window -> windows.add(entry.value)
                     is CalEntry.Busy -> busy.add(entry.value)
@@ -205,7 +203,8 @@ object CalendarRepo {
      * 終日とそれ以外で変換を分けているのはそのため。
      */
     fun classify(
-        summary: String, beginMs: Long, endMs: Long, allDay: Boolean, eventId: Long
+        summary: String, beginMs: Long, endMs: Long, allDay: Boolean, eventId: Long,
+        places: List<dev.togar.dynasched.Place> = dev.togar.dynasched.Places.DEFAULT
     ): CalEntry {
         // 自分で作った予定は読まない。同期のたびに作り直すので、材料にすると循環する
         if (summary.endsWith(GENERATED_SUFFIX)) return CalEntry.Generated
@@ -217,12 +216,9 @@ object CalendarRepo {
             return CalEntry.Exam(ExamPeriod(sd, ed, summary, eventId))
         }
 
-        val loc = when {
-            TAG_OUT.containsMatchIn(summary) -> "out"
-            TAG_HOME.containsMatchIn(summary) -> "home"
-            else -> null
-        }
-        val title = if (loc != null) TAG_ANY.replace(summary, "").trim() else summary
+        val matched = dev.togar.dynasched.Places.matchSuffix(places, summary)
+        val loc = matched?.first
+        val title = matched?.second ?: summary
 
         return if (allDay) {
             // タグ無しの終日予定（祝日など）で1日を潰さない。

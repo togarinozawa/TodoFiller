@@ -9,11 +9,11 @@ package dev.togar.dynasched.calendar
  * 難易度が跳ね上がるので、ここは意図的に揃えている。
  */
 
-/** 「家」「外」タグ付きの予定＝作業できる枠 */
+/** 末尾に場所の印が付いた予定＝作業できる枠 */
 data class AvailabilityWindow(
     val start: String,
     val end: String,
-    val location: String,   // "home" | "out"
+    val location: String,   // 場所のid（"home" | "out" | 設定で足した場所）
     val title: String,
     val eventId: Long
 )

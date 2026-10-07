@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 設定の詳細ページの中身。見出しと戻るは SettingsPage が付ける -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="0dp"
+        android:text="自動で埋める日数（何日先まで空き時間にタスクを入れるか）"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="12sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="4dp">
+
+        <EditText
+            android:id="@+id/fillDaysInput"
+            android:layout_width="70dp"
+            android:layout_height="wrap_content"
+            android:inputType="number"
+            android:gravity="center"
+            android:textColor="@color/on_bg"
+            android:text="7" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="日先まで（1〜30）"
+            android:textColor="@color/on_bg" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/runSchedulerButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:backgroundTint="@color/surface_variant"
+        android:text="スケジューラを実行（空き時間を埋める）"
+        android:textColor="@color/white" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="カレンダー"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="12sp" />
+
+    <!-- 何が枠として読めているかを実機で見るためのもの。
+         タグの付け方と読み取り結果が食い違うと、以降の配置が全部ずれる。 -->
+    <Button
+        android:id="@+id/calendarCheckButton"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="カレンダーの読み取りを確認"
+        android:textColor="@color/primary" />
+
+</LinearLayout>

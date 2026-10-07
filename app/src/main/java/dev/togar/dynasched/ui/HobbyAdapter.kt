@@ -32,6 +32,9 @@ class HobbyAdapter(
 
     private val rows = ArrayList<TaskRow>()
 
+    /** 「〇〇のみ」の名前を引くための場所一覧。一覧を出し直すたびに入れ替える */
+    var places: List<dev.togar.dynasched.Place> = dev.togar.dynasched.Places.DEFAULT
+
     /** つかんでいる行のID。その行だけボタンを隠して、掴んだ塊に見せる */
     var draggingId: Long? = null
 
@@ -185,7 +188,7 @@ class HobbyAdapter(
             item.priority <= 3 -> "低"
             else -> "中"
         }
-        val base = StringBuilder("$dur ・ ${item.locationLabel()} ・ 優先$prio")
+        val base = StringBuilder("$dur ・ ${item.locationLabel(places)} ・ 優先$prio")
         val tags = Tags.display(item.tags)
         if (tags.isNotEmpty()) base.append("  $tags")
         if (item.note.isNotBlank()) {

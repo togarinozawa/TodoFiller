@@ -52,12 +52,17 @@ object Prefs {
         sp(ctx).edit().putInt(KEY_FILL_DAYS, days.coerceIn(1, 30)).apply()
     }
 
-    /** ウィジェットの現在地設定（"home" | "out"） */
-    fun widgetLoc(ctx: Context): String =
-        sp(ctx).getString("widget_loc", "home") ?: "home"
+    /**
+     * ウィジェットと「暇なとき」の現在地（場所のid）。
+     * **消した場所を指したままにしない。**候補が永遠に0件になるので家に戻す。
+     */
+    fun widgetLoc(ctx: Context): String {
+        val v = sp(ctx).getString("widget_loc", Places.HOME) ?: Places.HOME
+        return if (Places.all(ctx).any { it.id == v }) v else Places.HOME
+    }
 
     fun setWidgetLoc(ctx: Context, loc: String) {
-        sp(ctx).edit().putString("widget_loc", if (loc == "out") "out" else "home").apply()
+        sp(ctx).edit().putString("widget_loc", loc).apply()
     }
 
     /**

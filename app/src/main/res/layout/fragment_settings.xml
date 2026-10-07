@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 設定の目次。Androidの設定アプリと同じく、項目を押すと詳細ページへ進む。
+     1ページに全部並べていた頃は、Notionの欄に埋もれて目当ての物が見つからなかった。 -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -8,297 +10,24 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:paddingTop="20dp"
+        android:paddingBottom="20dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginBottom="8dp"
             android:text="設定"
             android:textColor="@color/on_bg"
             android:textSize="20sp"
             android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/userText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:padding="14dp"
-            android:background="@color/surface"
-            android:text=""
-            android:textColor="@color/on_bg"
-            android:textSize="15sp" />
-
-        <Button
-            android:id="@+id/helpButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:backgroundTint="@color/primary"
-            android:text="使い方を見る"
-            android:textColor="@color/white" />
-
-        <Button
-            android:id="@+id/resyncButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:backgroundTint="@color/primary"
-            android:text="通知を再設定する"
-            android:textColor="@color/white" />
-
-        <!-- 何が枠として読めているかを実機で見るためのもの。
-             タグの付け方と読み取り結果が食い違うと、以降の配置が全部ずれる。 -->
-        <Button
-            android:id="@+id/calendarCheckButton"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="カレンダーの読み取りを確認"
-            android:textColor="@color/primary" />
-
-        <!-- 起床〜就寝。勉強の配置だけでなく通知と「暇なとき」にも効く。 -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="起きている時間帯"
-            android:textColor="@color/on_bg_dim"
-            android:textSize="12sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="この外には予定を置きません。就寝時刻には「今日はここまで」を通知し、「暇なとき」の提案もここで打ち切ります。"
-            android:textColor="@color/on_bg_dim"
-            android:textSize="11sp" />
-
-        <Button
-            android:id="@+id/wakeWindowButton"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="06:00 〜 23:00"
-            android:textColor="@color/primary" />
-
-        <CheckBox
-            android:id="@+id/bedtimeNoticeCheck"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:buttonTint="@color/primary"
-            android:text="就寝時刻に「今日はここまで」を通知する"
-            android:textColor="@color/on_bg"
-            android:textSize="13sp" />
-
-        <!-- 端末内完結にした以上、控えはここにしか無い。
-             署名鍵の変更や機種変更ではアプリごと消えるので、書き出しは必須。 -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="バックアップ"
-            android:textColor="@color/on_bg_dim"
-            android:textSize="12sp" />
-
-        <TextView
-            android:id="@+id/backupHint"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="教材・実績・単発タスクをファイルに書き出します。アプリを入れ直すとデータは消えるので、控えを取っておいてください。"
-            android:textColor="@color/on_bg_dim"
-            android:textSize="11sp" />
-
-        <Button
-            android:id="@+id/backupExportButton"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="バックアップを書き出す"
-            android:textColor="@color/primary" />
-
-        <Button
-            android:id="@+id/backupRestoreButton"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="バックアップから復元"
-            android:textColor="@color/primary" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="自動で埋める日数（何日先まで空き時間にタスクを入れるか）"
-            android:textColor="@color/on_bg_dim"
-            android:textSize="12sp" />
-
         <LinearLayout
+            android:id="@+id/settingsList"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginTop="4dp">
-
-            <EditText
-                android:id="@+id/fillDaysInput"
-                android:layout_width="70dp"
-                android:layout_height="wrap_content"
-                android:inputType="number"
-                android:gravity="center"
-                android:textColor="@color/on_bg"
-                android:text="7" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="日先まで（1〜30）"
-                android:textColor="@color/on_bg" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/runSchedulerButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:backgroundTint="@color/surface_variant"
-            android:text="スケジューラを実行（空き時間を埋める）"
-            android:textColor="@color/white" />
-
-        <!-- Notion同期。整理はNotion、実行の記録はスキマス、という分け方。
-             トークンは端末の外へ出さない（書き出しにも含めない）。 -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="24dp"
-            android:background="@color/surface_variant" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Notionと同期"
-            android:textColor="@color/primary"
-            android:textSize="13sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="タスクの整理をNotionでやり、完了や予定はスキマスから書き戻します。アプリを開いた時と、タスクを編集した時に同期します。"
-            android:textColor="@color/on_bg_dim"
-            android:textSize="12sp" />
-
-        <EditText
-            android:id="@+id/notionTokenInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@color/surface"
-            android:hint="インテグレーションのトークン (ntn_...)"
-            android:importantForAutofill="no"
-            android:inputType="textPassword"
-            android:padding="12dp"
-            android:textColor="@color/on_bg"
-            android:textColorHint="@color/on_bg_dim"
-            android:textSize="13sp" />
-
-        <EditText
-            android:id="@+id/notionPageInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="@color/surface"
-            android:hint="NotionページまたはデータベースのURL"
-            android:importantForAutofill="no"
-            android:inputType="textUri"
-            android:padding="12dp"
-            android:textColor="@color/on_bg"
-            android:textColorHint="@color/on_bg_dim"
-            android:textSize="13sp" />
-
-        <!-- 既にあるDBへ繋ぎ直す方を主にしてある。作り直すと空のDBに向いてしまい、
-             前のDBの中身が行き場を失うため（実際にそれで参らせた） -->
-        <Button
-            android:id="@+id/notionOpenButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:backgroundTint="@color/primary"
-            android:text="このデータベースに繋ぐ"
-            android:textColor="@color/white" />
-
-        <Button
-            android:id="@+id/notionConnectButton"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="新しくデータベースを作る"
-            android:textColor="@color/on_bg_dim" />
-
-        <Button
-            android:id="@+id/notionSyncButton"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="今すぐ同期する"
-            android:textColor="@color/primary" />
-
-        <TextView
-            android:id="@+id/notionStatusText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text=""
-            android:textColor="@color/on_bg_dim"
-            android:textSize="12sp" />
-
-        <!-- 同期でDBを書き換える直前の控え。事故った時に直前へ戻す道 -->
-        <Button
-            android:id="@+id/snapshotButton"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="同期前の控えから戻す"
-            android:textColor="@color/primary" />
-
-        <Button
-            android:id="@+id/notionDisconnectButton"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="同期をやめる"
-            android:textColor="@color/on_bg_dim" />
-
-        <Button
-            android:id="@+id/checkUpdateButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:backgroundTint="@color/surface_variant"
-            android:text="アプリの更新を確認する"
-            android:textColor="@color/white" />
-
-        <TextView
-            android:id="@+id/versionText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text=""
-            android:textColor="@color/on_bg_dim"
-            android:textSize="12sp" />
+            android:orientation="vertical" />
 
     </LinearLayout>
 

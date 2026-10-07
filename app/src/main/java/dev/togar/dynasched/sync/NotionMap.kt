@@ -1,6 +1,8 @@
 package dev.togar.dynasched.sync
 
 import dev.togar.dynasched.api.CalColor
+import dev.togar.dynasched.Place
+import dev.togar.dynasched.Places
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -30,18 +32,17 @@ object NotionMap {
     const val ORDER = "並び順"
     const val COLOR = "色"
 
-    /** 場所の内部値 ↔ Notionの選択肢 */
-    private val PLACES = listOf(
-        "anywhere" to "どこでも",
-        "home" to "家のみ",
-        "out" to "外のみ"
-    )
+    /**
+     * 場所の内部値 ↔ Notionの選択肢（「どこでも」「家のみ」「学校のみ」…）。
+     * 場所は設定で増やせるので一覧を受け取る。Notionは知らない選択肢を
+     * 書き込まれると自分で足すので、列の定義は直さなくてよい。
+     */
+    fun placeLabel(value: String, places: List<Place> = Places.DEFAULT): String =
+        Places.taskLabel(places, value)
 
-    fun placeLabel(value: String): String =
-        PLACES.firstOrNull { it.first == value }?.second ?: "どこでも"
-
-    fun placeValue(label: String): String =
-        PLACES.firstOrNull { it.second == label }?.first ?: "anywhere"
+    /** 読めない選択肢（消した場所など）は「どこでも」として扱う */
+    fun placeValue(label: String, places: List<Place> = Places.DEFAULT): String =
+        Places.idFromTaskLabel(places, label) ?: Places.ANYWHERE
 
     /**
      * カレンダー色。端末は colorId（"" は既定）で持ち、Notionには見て分かる名前で置く。
@@ -64,7 +65,7 @@ object NotionMap {
     // ---- 読む ----
 
     /** 検索結果の1ページ分。読めない形なら null（1件の崩れで同期全体を止めない） */
-    fun readPage(page: JSONObject): NotionTask? {
+    fun readPage(page: JSONObject, places: List<Place> = Places.DEFAULT): NotionTask? {
         val id = page.optString("id", "")
         if (id.isEmpty()) return null
         val p = page.optJSONObject("properties") ?: JSONObject()
@@ -74,7 +75,7 @@ object NotionMap {
             name = plainText(p.optJSONObject(NAME)),
             durationMinutes = number(p.optJSONObject(MINUTES), 30),
             priority = number(p.optJSONObject(PRIORITY), 5),
-            location = placeValue(selectName(p.optJSONObject(PLACE))),
+            location = placeValue(selectName(p.optJSONObject(PLACE)), places),
             note = plainText(p.optJSONObject(NOTE)),
             tags = multiSelect(p.optJSONObject(TAGS)).joinToString(","),
             sortOrder = number(p.optJSONObject(ORDER), 0),
@@ -138,14 +139,15 @@ object NotionMap {
     fun writeProperties(
         t: LocalTask,
         parentPageId: String?,
-        includeParent: Boolean = true
+        includeParent: Boolean = true,
+        places: List<Place> = Places.DEFAULT
     ): JSONObject {
         val p = JSONObject()
         p.put(NAME, JSONObject().put("title", richText(t.name)))
         p.put(MINUTES, JSONObject().put("number", t.durationMinutes))
         p.put(PRIORITY, JSONObject().put("number", t.priority))
         p.put(ORDER, JSONObject().put("number", t.sortOrder))
-        p.put(PLACE, JSONObject().put("select", JSONObject().put("name", placeLabel(t.location))))
+        p.put(PLACE, JSONObject().put("select", JSONObject().put("name", placeLabel(t.location, places))))
         p.put(COLOR, selectOrNull(colorLabel(t.color)))
         p.put(NOTE, JSONObject().put("rich_text", richText(t.note)))
         p.put(DONE, JSONObject().put("checkbox", t.completed))

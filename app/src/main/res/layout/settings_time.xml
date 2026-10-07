@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 設定の詳細ページの中身。見出しと戻るは SettingsPage が付ける -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <!-- 起床〜就寝。勉強の配置だけでなく通知と「暇なとき」にも効く。 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="0dp"
+        android:text="起きている時間帯"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="この外には予定を置きません。就寝時刻には「今日はここまで」を通知し、「暇なとき」の提案もここで打ち切ります。"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="11sp" />
+
+    <Button
+        android:id="@+id/wakeWindowButton"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="06:00 〜 23:00"
+        android:textColor="@color/primary" />
+
+    <CheckBox
+        android:id="@+id/bedtimeNoticeCheck"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:buttonTint="@color/primary"
+        android:text="就寝時刻に「今日はここまで」を通知する"
+        android:textColor="@color/on_bg"
+        android:textSize="13sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="通知"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="予定の通知が来ない・ずれている時に押してください。今日の予定から通知を予約し直します。"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="11sp" />
+
+    <Button
+        android:id="@+id/resyncButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:backgroundTint="@color/primary"
+        android:text="通知を再設定する"
+        android:textColor="@color/white" />
+
+</LinearLayout>

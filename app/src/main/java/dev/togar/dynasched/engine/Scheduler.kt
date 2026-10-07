@@ -122,7 +122,7 @@ object Scheduler {
             val s = maxOf(c.first, wakeStart)
             val e = minOf(c.last, wakeEnd)
             if (e <= s) continue
-            val loc = if (w.location == "out") "out" else "home"
+            val loc = w.location
             for (p in subtractBusy(s, e, busy)) tagFree.add(FreeSlot(p.first, p.last, loc))
         }
 

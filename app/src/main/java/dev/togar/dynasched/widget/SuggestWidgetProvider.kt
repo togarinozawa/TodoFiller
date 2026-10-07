@@ -49,7 +49,7 @@ class SuggestWidgetProvider : AppWidgetProvider() {
             // まず読み込み中表示 → 取得後に本表示（RemoteViewsは取得完了後にまとめて更新）
             Thread {
                 val views = RemoteViews(ctx.packageName, R.layout.widget_suggest)
-                val locLabel = if (loc == "out") "外" else "家"
+                val locLabel = dev.togar.dynasched.Places.name(dev.togar.dynasched.Places.all(ctx), loc)
                 views.setTextViewText(R.id.widgetTitle, "いまできること（$locLabel・${min}分）")
                 try {
                     val items = Repo.current(ctx).getSuggestions(ctx, loc, min, LINES.size)
@@ -135,8 +135,10 @@ class SuggestWidgetProvider : AppWidgetProvider() {
         super.onReceive(context, intent)
         when (intent.action) {
             ACTION_TOGGLE_LOC -> {
-                val cur = Prefs.widgetLoc(context)
-                Prefs.setWidgetLoc(context, if (cur == "out") "home" else "out")
+                // 場所を順に回す。2つしか無ければ今までどおり家⇔外の切り替え
+                val places = dev.togar.dynasched.Places.all(context)
+                val i = places.indexOfFirst { it.id == Prefs.widgetLoc(context) }
+                Prefs.setWidgetLoc(context, places[(i + 1) % places.size].id)
                 updateAll(context)
             }
             ACTION_REFRESH -> updateAll(context)

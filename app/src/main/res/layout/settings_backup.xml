@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 設定の詳細ページの中身。見出しと戻るは SettingsPage が付ける -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <!-- 端末内完結にした以上、控えはここにしか無い。
+         署名鍵の変更や機種変更ではアプリごと消えるので、書き出しは必須。 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="0dp"
+        android:text="バックアップ"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/backupHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="教材・実績・単発タスクをファイルに書き出します。アプリを入れ直すとデータは消えるので、控えを取っておいてください。"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="11sp" />
+
+    <Button
+        android:id="@+id/backupExportButton"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="バックアップを書き出す"
+        android:textColor="@color/primary" />
+
+    <Button
+        android:id="@+id/backupRestoreButton"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="バックアップから復元"
+        android:textColor="@color/primary" />
+
+</LinearLayout>

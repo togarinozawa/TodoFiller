@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 設定の詳細ページの中身。見出しと戻るは SettingsPage が付ける -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/userText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="0dp"
+        android:padding="14dp"
+        android:background="@color/surface"
+        android:text=""
+        android:textColor="@color/on_bg"
+        android:textSize="15sp" />
+
+    <Button
+        android:id="@+id/checkUpdateButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:backgroundTint="@color/surface_variant"
+        android:text="アプリの更新を確認する"
+        android:textColor="@color/white" />
+
+    <TextView
+        android:id="@+id/versionText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text=""
+        android:textColor="@color/on_bg_dim"
+        android:textSize="12sp" />
+
+</LinearLayout>

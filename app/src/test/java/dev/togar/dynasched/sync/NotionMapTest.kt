@@ -58,6 +58,19 @@ class NotionMapTest {
     }
 
     @Test
+    fun 足した場所は名前のみで読み書きする() {
+        val places = dev.togar.dynasched.Places.DEFAULT + dev.togar.dynasched.Place("p1", "学校")
+        val props = JSONObject()
+            .put(NotionMap.PLACE, JSONObject().put("select", JSONObject().put("name", "学校のみ")))
+        assertEquals("p1", NotionMap.readPage(page(props), places)!!.location)
+        // 消した場所の選択肢は「どこでも」として読む
+        assertEquals("anywhere", NotionMap.readPage(page(props))!!.location)
+
+        val out = NotionMap.writeProperties(LocalTask(id = 1, location = "p1"), null, places = places)
+        assertEquals("学校のみ", out.getJSONObject(NotionMap.PLACE).getJSONObject("select").getString("name"))
+    }
+
+    @Test
     fun 列が無くても既定値で通る() {
         // Notion側で列を消された時。ここで落ちると同期が二度と通らなくなる
         val t = NotionMap.readPage(page(JSONObject()))!!

@@ -74,7 +74,7 @@ object NotionSyncer {
 
     fun sync(ctx: Context): SyncResult = synchronized(lock) {
         if (!Prefs.notionReady(ctx)) return SyncResult(skipped = true)
-        val api = NotionApi(Prefs.notionToken(ctx))
+        val api = NotionApi(Prefs.notionToken(ctx), dev.togar.dynasched.Places.all(ctx))
         val ds = Prefs.notionDataSourceId(ctx)
         return try {
             val result = run(ctx, api, ds)

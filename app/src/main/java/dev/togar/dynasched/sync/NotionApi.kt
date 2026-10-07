@@ -22,7 +22,11 @@ import java.net.URL
  *
  * すべてワーカースレッドから呼ぶこと。
  */
-class NotionApi(private val token: String) {
+class NotionApi(
+    private val token: String,
+    /** 場所の選択肢を読み書きするための一覧（設定で増やせる） */
+    private val places: List<dev.togar.dynasched.Place> = dev.togar.dynasched.Places.DEFAULT
+) {
 
     companion object {
         private const val BASE = "https://api.notion.com/v1"
@@ -166,7 +170,7 @@ class NotionApi(private val token: String) {
             for (i in 0 until results.length()) {
                 val page = results.optJSONObject(i) ?: continue
                 // 1件が壊れていても同期全体は止めない
-                NotionMap.readPage(page)?.let { out.add(it) }
+                NotionMap.readPage(page, places)?.let { out.add(it) }
             }
             cursor = if (res.optBoolean("has_more", false)) res.optString("next_cursor", "") else null
             if (cursor.isNullOrEmpty()) cursor = null
@@ -198,7 +202,7 @@ class NotionApi(private val token: String) {
         val body = JSONObject()
             .put("parent", JSONObject()
                 .put("type", "data_source_id").put("data_source_id", dataSourceId))
-            .put("properties", NotionMap.writeProperties(task, parentPageId))
+            .put("properties", NotionMap.writeProperties(task, parentPageId, places = places))
         val o = request("POST", "$BASE/pages", body)
         return o.optString("id", "")
     }
@@ -206,7 +210,7 @@ class NotionApi(private val token: String) {
     /** 端末が勝つ回。中身をまるごと押し返す */
     fun updatePage(pageId: String, task: LocalTask, parentPageId: String?) {
         request("PATCH", "$BASE/pages/$pageId",
-            JSONObject().put("properties", NotionMap.writeProperties(task, parentPageId)))
+            JSONObject().put("properties", NotionMap.writeProperties(task, parentPageId, places = places)))
     }
 
     /** 実行の記録だけ書き戻す。Notionで整理した中身は踏まない */

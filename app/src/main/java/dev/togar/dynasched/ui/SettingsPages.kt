@@ -1,0 +1,465 @@
+package dev.togar.dynasched.ui
+
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.fragment.app.Fragment
+import dev.togar.dynasched.BuildConfig
+import dev.togar.dynasched.Prefs
+import dev.togar.dynasched.R
+import dev.togar.dynasched.api.Api
+import dev.togar.dynasched.data.Repo
+import dev.togar.dynasched.notify.AlarmScheduler
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * 設定の詳細ページの土台。見出しと戻る矢印を付け、中身は [layout] を差し込む。
+ * 中身の配線は [setup] でやる（root はページの中身）。
+ */
+abstract class SettingsPage(private val title: String, private val layout: Int) : Fragment() {
+
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
+    ): View {
+        val page = inflater.inflate(R.layout.settings_page, container, false)
+        page.findViewById<TextView>(R.id.pageTitle).text = title
+        page.findViewById<View>(R.id.pageBack).setOnClickListener {
+            requireActivity().onBackPressedDispatcher.onBackPressed()
+        }
+        val body = page.findViewById<FrameLayout>(R.id.pageBody)
+        setup(inflater.inflate(layout, body, true))
+        return page
+    }
+
+    protected abstract fun setup(root: View)
+}
+
+/** 起きている時間帯・就寝の通知・通知の再設定 */
+class TimeSettingsPage : SettingsPage("時間帯と通知", R.layout.settings_time) {
+
+    override fun setup(root: View) {
+        setupWakeWindow(root)
+        root.findViewById<Button>(R.id.resyncButton).setOnClickListener { resyncNotifications() }
+    }
+
+    private fun today(): String =
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+    // ---- 起きている時間帯 ----
+
+    /**
+     * 起床と就寝を決める。**アプリ全体で共有する設定**で、
+     * 配置の打ち切り・「今日はここまで」の通知・「暇なとき」の上限に効く。
+     */
+    private fun setupWakeWindow(root: View) {
+        val button = root.findViewById<Button>(R.id.wakeWindowButton)
+        val check = root.findViewById<android.widget.CheckBox>(R.id.bedtimeNoticeCheck)
+        val ctx = requireContext()
+
+        fun hhmm(m: Int) = String.format(java.util.Locale.US, "%02d:%02d", m / 60, m % 60)
+        fun refresh() {
+            button.text = "${hhmm(Prefs.wakeMinutes(ctx))} 〜 ${hhmm(Prefs.bedtimeMinutes(ctx))}"
+        }
+        refresh()
+        check.isChecked = Prefs.bedtimeNotice(ctx)
+
+        check.setOnCheckedChangeListener { _, on ->
+            Prefs.setBedtimeNotice(ctx, on)
+            dev.togar.dynasched.notify.BedtimeReceiver.schedule(ctx)
+        }
+
+        button.setOnClickListener {
+            val wake = Prefs.wakeMinutes(ctx)
+            android.app.TimePickerDialog(ctx, { _, h, m ->
+                val newWake = h * 60 + m
+                val bed = Prefs.bedtimeMinutes(ctx)
+                android.app.TimePickerDialog(ctx, { _, bh, bm ->
+                    val newBed = bh * 60 + bm
+                    if (newBed <= newWake) {
+                        // 日をまたぐ指定は扱っていない。黙って直すより言って止める
+                        Toast.makeText(ctx, "就寝は起床より後にしてください", Toast.LENGTH_LONG).show()
+                        return@TimePickerDialog
+                    }
+                    Prefs.setWakeWindow(ctx, newWake, newBed)
+                    refresh()
+                    dev.togar.dynasched.notify.BedtimeReceiver.schedule(ctx)
+                    Toast.makeText(ctx, "次の再生成から反映されます", Toast.LENGTH_SHORT).show()
+                }, bed / 60, bed % 60, true).apply { setTitle("就寝時刻") }.show()
+            }, wake / 60, wake % 60, true).apply { setTitle("起床時刻") }.show()
+        }
+    }
+
+    private fun resyncNotifications() {
+        Toast.makeText(requireContext(), "通知を再設定中…", Toast.LENGTH_SHORT).show()
+        val ctx = requireContext().applicationContext
+        Api.async(
+            work = { Repo.current(ctx).getSchedule(ctx, today()) },
+            onSuccess = { all ->
+                if (!isAdded) return@async
+                AlarmScheduler.scheduleAll(ctx, all)
+                dev.togar.dynasched.integration.StudySync.send(ctx, all)
+                Toast.makeText(requireContext(), "通知を再設定しました", Toast.LENGTH_SHORT).show()
+            },
+            onError = { e ->
+                if (!isAdded) return@async
+                Toast.makeText(requireContext(), "失敗: ${Api.friendlyMessage(e)}", Toast.LENGTH_LONG).show()
+            }
+        )
+    }
+}
+
+/** 何日先まで埋めるか・スケジューラの実行・カレンダーの読み取り確認 */
+class ScheduleSettingsPage : SettingsPage("予定の自動配置", R.layout.settings_schedule) {
+
+    override fun setup(root: View) {
+        val fillDaysInput = root.findViewById<android.widget.EditText>(R.id.fillDaysInput)
+        fillDaysInput.setText(Prefs.fillDays(requireContext()).toString())
+        root.findViewById<Button>(R.id.runSchedulerButton).setOnClickListener {
+            // 入力された日数を保存してからスケジューラを実行
+            val n = fillDaysInput.text.toString().toIntOrNull() ?: Prefs.DEFAULT_FILL_DAYS
+            Prefs.setFillDays(requireContext(), n)
+            fillDaysInput.setText(Prefs.fillDays(requireContext()).toString())
+            runScheduler()
+        }
+        root.findViewById<Button>(R.id.calendarCheckButton).setOnClickListener {
+            CalendarCheckDialog.show(requireActivity())
+        }
+    }
+
+    /**
+     * 再生成。**結果を必ず数字で見せる。**
+     *
+     * 以前は成功トーストを出すだけだったので、0件しか置けていない時と
+     * 正常な時が見分けられなかった。「使い方が悪いのか不具合なのか」を
+     * ここで判別できるようにしておく。
+     */
+    private fun runScheduler() {
+        val days = Prefs.fillDays(requireContext())
+        Toast.makeText(requireContext(), "スケジューラ実行中…（${days}日先まで）", Toast.LENGTH_SHORT).show()
+        val ctx = requireContext().applicationContext
+        Api.async(
+            work = { Repo.current(ctx).runScheduler(ctx, days) },
+            onSuccess = { report ->
+                if (!isAdded) return@async
+                androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                    .setTitle("再生成: ${report.placed}件")
+                    .setMessage(report.describe())
+                    .setPositiveButton("閉じる", null)
+                    .show()
+            },
+            onError = { e ->
+                if (!isAdded) return@async
+                Toast.makeText(requireContext(), "失敗: ${Api.friendlyMessage(e)}", Toast.LENGTH_LONG).show()
+            }
+        )
+    }
+}
+
+/** バックアップの書き出しと復元 */
+class BackupSettingsPage : SettingsPage("バックアップ", R.layout.settings_backup) {
+
+    /**
+     * 保存先はファイル選択に任せる（SAF）。アプリが勝手に書ける場所へ置くと、
+     * **アプリを消した時に一緒に消えて控えの意味が無くなる**。
+     * 登録は画面が動き出す前に済ませる必要があるのでフィールドで持つ。
+     */
+    private val exportPicker = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> if (uri != null) writeBackup(uri) }
+
+    private val restorePicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) confirmRestore(uri) }
+
+    override fun setup(root: View) {
+        root.findViewById<Button>(R.id.backupExportButton).setOnClickListener {
+            exportPicker.launch(dev.togar.dynasched.data.Backup.suggestedFileName())
+        }
+        root.findViewById<Button>(R.id.backupRestoreButton).setOnClickListener {
+            restorePicker.launch(arrayOf("application/json", "text/plain", "*/*"))
+        }
+    }
+
+    private fun writeBackup(uri: android.net.Uri) {
+        val ctx = requireContext().applicationContext
+        Api.async(
+            work = {
+                val json = dev.togar.dynasched.data.Backup.export(ctx)
+                ctx.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+                    ?: throw java.io.IOException("書き込み先を開けませんでした")
+                dev.togar.dynasched.data.Backup.peek(json)
+            },
+            onSuccess = { r ->
+                if (!isAdded) return@async
+                androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                    .setTitle("書き出しました")
+                    .setMessage(
+                        "教材 ${r.materials}件 / 実績 ${r.attempts}件 / 単発タスク ${r.hobbies}件\n\n" +
+                            "**アプリを入れ直すと端末内のデータは消えます。**\n" +
+                            "このファイルをクラウドなど別の場所にも置いておいてください。"
+                    )
+                    .setPositiveButton("OK", null)
+                    .show()
+            },
+            onError = { e ->
+                if (!isAdded) return@async
+                Toast.makeText(requireContext(), "書き出せませんでした: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        )
+    }
+
+    /** 復元は全部入れ替え。取り返しがつかないので、中身を見せてから確認する */
+    private fun confirmRestore(uri: android.net.Uri) {
+        val ctx = requireContext().applicationContext
+        Api.async(
+            work = {
+                val json = ctx.contentResolver.openInputStream(uri)?.use {
+                    it.readBytes().toString(Charsets.UTF_8)
+                } ?: throw java.io.IOException("ファイルを開けませんでした")
+                json to dev.togar.dynasched.data.Backup.peek(json)
+            },
+            onSuccess = { (json, r) ->
+                if (!isAdded) return@async
+                androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                    .setTitle("復元しますか？")
+                    .setMessage(
+                        "控えの中身:\n教材 ${r.materials}件 / 実績 ${r.attempts}件 / 単発タスク ${r.hobbies}件\n\n" +
+                            "**いま端末にあるデータは全部消えて、この控えで置き換わります。**\n" +
+                            "予定は消えるので、復元後にスケジューラを実行してください。"
+                    )
+                    .setPositiveButton("復元する") { _, _ -> doRestore(json) }
+                    .setNegativeButton("やめる", null)
+                    .show()
+            },
+            onError = { e ->
+                if (!isAdded) return@async
+                Toast.makeText(requireContext(), "読めませんでした: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        )
+    }
+
+    private fun doRestore(json: String) {
+        val ctx = requireContext().applicationContext
+        Api.async(
+            work = { dev.togar.dynasched.data.Backup.restore(ctx, json) },
+            onSuccess = { r ->
+                if (!isAdded) return@async
+                androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                    .setTitle("復元しました")
+                    .setMessage(
+                        "教材 ${r.materials}件 / 実績 ${r.attempts}件 / 単発タスク ${r.hobbies}件\n\n" +
+                            "予定はまだありません。「スケジューラ実行」を押してください。"
+                    )
+                    .setPositiveButton("OK", null)
+                    .show()
+            },
+            onError = { e ->
+                if (!isAdded) return@async
+                Toast.makeText(requireContext(), "復元できませんでした: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        )
+    }
+}
+
+/** Notion同期の接続・同期・控え */
+class NotionSettingsPage : SettingsPage("Notionと同期", R.layout.settings_notion) {
+
+    override fun setup(root: View) = setupNotion(root)
+
+    /**
+     * 繋ぐのは2段階。**トークンだけでは足りない。**Notion側でページを
+     * インテグレーションに接続しておかないと、権限が無くて何も見えない
+     * （その場合APIは404を返すので、迷わないようにそう案内している）。
+     *
+     * データベースは自分で作る。列を8つ手で作らせるより確実で、
+     * 列名の食い違いという一番だるい事故も起きない。
+     */
+    private fun setupNotion(root: View) {
+        val ctx = requireContext()
+        val tokenInput = root.findViewById<android.widget.EditText>(R.id.notionTokenInput)
+        val pageInput = root.findViewById<android.widget.EditText>(R.id.notionPageInput)
+        val openBtn = root.findViewById<Button>(R.id.notionOpenButton)
+        val connectBtn = root.findViewById<Button>(R.id.notionConnectButton)
+        val syncBtn = root.findViewById<Button>(R.id.notionSyncButton)
+        val disconnectBtn = root.findViewById<Button>(R.id.notionDisconnectButton)
+        val status = root.findViewById<TextView>(R.id.notionStatusText)
+
+        fun refresh() {
+            val ready = Prefs.notionReady(ctx)
+            syncBtn.isEnabled = ready
+            disconnectBtn.visibility = if (ready) View.VISIBLE else View.GONE
+            // URL欄は繋いだ後も出したままにする。**繋ぎ先を変えたい時に
+            // 「作り直す」しか道が無いと、空のDBに向いてしまう**
+            val last = Prefs.notionLastResult(ctx)
+            status.text = when {
+                !ready -> "未接続。トークンと、置き場所にするページのURLを入れてください"
+                last.isEmpty() -> "接続済み。まだ同期していません"
+                else -> last
+            }
+        }
+
+        // トークンは伏せ字で入るので、入っていることだけ分かるようにする
+        if (Prefs.notionToken(ctx).isNotEmpty()) tokenInput.setText(Prefs.notionToken(ctx))
+        refresh()
+
+        /** 入力からトークンとIDを取る。駄目なら理由を出して null */
+        fun readInputs(): Pair<String, String>? {
+            val token = tokenInput.text.toString().trim()
+            if (token.isEmpty()) {
+                Toast.makeText(ctx, "トークンを入れてください", Toast.LENGTH_SHORT).show()
+                return null
+            }
+            val id = dev.togar.dynasched.sync.NotionLink.pageIdFrom(pageInput.text.toString())
+            if (id == null) {
+                Toast.makeText(ctx, "URLが読めません。Notionで「リンクをコピー」した物を貼ってください",
+                    Toast.LENGTH_LONG).show()
+                return null
+            }
+            return token to id
+        }
+
+        fun apply(label: String, work: (dev.togar.dynasched.sync.NotionApi, String) -> Pair<String, String>) {
+            val (token, id) = readInputs() ?: return
+            Prefs.setNotionToken(ctx, token)
+            status.text = "$label しています…"
+            openBtn.isEnabled = false; connectBtn.isEnabled = false
+            Api.async({
+                val api = dev.togar.dynasched.sync.NotionApi(token)
+                api.whoAmI()   // 先にトークンだけ試す。作りかけの物を残さないため
+                work(api, id)
+            }, { (dbId, dsId) ->
+                Prefs.setNotionTarget(ctx, dbId, dsId)
+                openBtn.isEnabled = true; connectBtn.isEnabled = true
+                refresh()
+                syncNow(status)
+            }, { e ->
+                openBtn.isEnabled = true; connectBtn.isEnabled = true
+                status.text = "失敗: " + Api.friendlyMessage(e)
+            })
+        }
+
+        // 既にあるDBへ繋ぐ。**作り直しより先に置いてある**
+        openBtn.setOnClickListener {
+            apply("接続") { api, id -> api.openExistingDatabase(id) }
+        }
+
+        connectBtn.setOnClickListener {
+            // 繋がっている時は必ず訊く。押し間違いで空のDBに向くと、
+            // 前のDBの中身が行き場を失う
+            if (!Prefs.notionReady(ctx)) {
+                apply("作成") { api, id -> api.createTaskDatabase(id, "スキマスのタスク") }
+                return@setOnClickListener
+            }
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle("新しく作りますか")
+                .setMessage(
+                    "いま繋がっているデータベースから離れて、空のものを新しく作ります。" +
+                        "前のデータベースは残りますが、そちらの中身は取り込まれなくなります。" +
+                        "繋ぎ先を変えたいだけなら、上の「このデータベースに繋ぐ」を使ってください。"
+                )
+                .setPositiveButton("新しく作る") { _, _ ->
+                    apply("作成") { api, id -> api.createTaskDatabase(id, "スキマスのタスク") }
+                }
+                .setNegativeButton("やめる", null)
+                .show()
+        }
+
+        syncBtn.setOnClickListener { syncNow(status) }
+
+        root.findViewById<Button>(R.id.snapshotButton).setOnClickListener { showSnapshots() }
+
+        disconnectBtn.setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle("同期をやめる")
+                .setMessage("トークンを消して同期を止めます。Notion側のデータベースも、" +
+                    "端末のタスクもそのまま残ります。")
+                .setPositiveButton("やめる") { _, _ ->
+                    Prefs.setNotionToken(ctx, "")
+                    Prefs.setNotionTarget(ctx, "", "")
+                    Prefs.setNotionLastResult(ctx, "")
+                    tokenInput.setText("")
+                    refresh()
+                }
+                .setNegativeButton("戻る", null)
+                .show()
+        }
+    }
+
+    /**
+     * 同期前の控えから戻す。
+     *
+     * **控えは同期がDBを書き換える直前にだけ取っている。**
+     * 戻すと、その時点以降に端末でやったことは消える。取り返しが付かないので確認を挟む。
+     */
+    private fun showSnapshots() {
+        val ctx = requireContext()
+        val files = dev.togar.dynasched.data.Snapshots.list(ctx)
+        if (files.isEmpty()) {
+            Toast.makeText(ctx, "控えはまだありません（同期で書き換えた時に取ります）",
+                Toast.LENGTH_LONG).show()
+            return
+        }
+        val labels = files.map { dev.togar.dynasched.data.Snapshots.label(it) }.toTypedArray()
+        androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setTitle("同期前の控え")
+            .setItems(labels) { _, i -> confirmSnapshot(files[i], labels[i]) }
+            .setNegativeButton("閉じる", null)
+            .show()
+    }
+
+    private fun confirmSnapshot(file: java.io.File, label: String) {
+        val ctx = requireContext()
+        androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setTitle("この控えに戻しますか")
+            .setMessage("$label の状態に戻します。" +
+                "それ以降に端末でやったことは消えます。元に戻せません。")
+            .setPositiveButton("戻す") { _, _ ->
+                Api.async({ dev.togar.dynasched.data.Snapshots.restore(ctx, file) }, { r ->
+                    if (!isAdded) return@async
+                    Toast.makeText(ctx,
+                        "戻しました（タスク${r.hobbies}件・教材${r.materials}件）",
+                        Toast.LENGTH_LONG).show()
+                }, { e ->
+                    if (!isAdded) return@async
+                    Toast.makeText(ctx, "失敗: " + Api.friendlyMessage(e), Toast.LENGTH_LONG).show()
+                })
+            }
+            .setNegativeButton("やめる", null)
+            .show()
+    }
+
+    private fun syncNow(status: TextView) {
+        val ctx = requireContext()
+        status.text = "同期しています…"
+        Api.async(
+            { dev.togar.dynasched.sync.NotionSyncer.sync(ctx.applicationContext) },
+            { r -> if (isAdded) status.text = r.message() },
+            { e -> if (isAdded) status.text = "失敗: " + Api.friendlyMessage(e) }
+        )
+    }
+}
+
+/** 動作の説明・版・更新の確認 */
+class AboutSettingsPage : SettingsPage("アプリについて", R.layout.settings_about) {
+
+    override fun setup(root: View) {
+        root.findViewById<TextView>(R.id.userText).text =
+            "端末内で動いています。ログインもサーバーも使いません。"
+        root.findViewById<TextView>(R.id.versionText).text =
+            "現在のバージョン: v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+        root.findViewById<Button>(R.id.checkUpdateButton).setOnClickListener {
+            Toast.makeText(requireContext(), "更新を確認中…", Toast.LENGTH_SHORT).show()
+            (requireActivity() as? androidx.appcompat.app.AppCompatActivity)?.let {
+                dev.togar.dynasched.update.UpdateChecker.check(it, force = true)
+            }
+        }
+    }
+}

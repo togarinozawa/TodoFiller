@@ -23,12 +23,9 @@ data class HobbyItem(
     var level: Int = 0,
     var hasChildren: Boolean = false  // 子を持つタスクはチェックボックス非表示（葉のみ完了可能）
 ) {
-    /** 場所の日本語ラベル */
-    fun locationLabel(): String = when (location) {
-        "home" -> "家のみ"
-        "out" -> "外のみ"
-        else -> "どこでも"
-    }
+    /** 場所の日本語ラベル。場所は設定で増やせるので一覧を渡す */
+    fun locationLabel(places: List<dev.togar.dynasched.Place>): String =
+        dev.togar.dynasched.Places.taskLabel(places, location)
 
     companion object {
         fun from(o: JSONObject): HobbyItem {

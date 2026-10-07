@@ -406,6 +406,7 @@ class HobbyFragment : Fragment() {
         renderStats(ctx)
         val mode = doneMode()
         val rows = TaskList.build(visible, sortMode(), Prefs.collapsed(ctx), mode)
+        adapter.places = dev.togar.dynasched.Places.all(ctx)
         adapter.submit(rows)
         empty.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
         empty.text = when {
@@ -659,10 +660,11 @@ class HobbyFragment : Fragment() {
         root.addView(durationPicker)
 
         root.addView(label("場所"))
-        val locValues = arrayOf("anywhere", "home", "out")
+        val locChoices = dev.togar.dynasched.Places.taskChoices(dev.togar.dynasched.Places.all(ctx))
+        val locValues = locChoices.map { it.first }
         val locSpinner = android.widget.Spinner(ctx).apply {
             adapter = android.widget.ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item,
-                arrayOf("どこでも", "家のみ", "外のみ"))
+                locChoices.map { it.second })
             setSelection(locValues.indexOf(item.location).let { if (it >= 0) it else 0 })
         }
         root.addView(locSpinner)

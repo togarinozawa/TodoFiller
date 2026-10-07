@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 設定の詳細ページの中身。見出しと戻るは SettingsPage が付ける -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="0dp"
+        android:text="タスクの整理をNotionでやり、完了や予定はスキマスから書き戻します。アプリを開いた時と、タスクを編集した時に同期します。"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="12sp" />
+
+    <EditText
+        android:id="@+id/notionTokenInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@color/surface"
+        android:hint="インテグレーションのトークン (ntn_...)"
+        android:importantForAutofill="no"
+        android:inputType="textPassword"
+        android:padding="12dp"
+        android:textColor="@color/on_bg"
+        android:textColorHint="@color/on_bg_dim"
+        android:textSize="13sp" />
+
+    <EditText
+        android:id="@+id/notionPageInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@color/surface"
+        android:hint="NotionページまたはデータベースのURL"
+        android:importantForAutofill="no"
+        android:inputType="textUri"
+        android:padding="12dp"
+        android:textColor="@color/on_bg"
+        android:textColorHint="@color/on_bg_dim"
+        android:textSize="13sp" />
+
+    <!-- 既にあるDBへ繋ぎ直す方を主にしてある。作り直すと空のDBに向いてしまい、
+         前のDBの中身が行き場を失うため（実際にそれで参らせた） -->
+    <Button
+        android:id="@+id/notionOpenButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:backgroundTint="@color/primary"
+        android:text="このデータベースに繋ぐ"
+        android:textColor="@color/white" />
+
+    <Button
+        android:id="@+id/notionConnectButton"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="新しくデータベースを作る"
+        android:textColor="@color/on_bg_dim" />
+
+    <Button
+        android:id="@+id/notionSyncButton"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="今すぐ同期する"
+        android:textColor="@color/primary" />
+
+    <TextView
+        android:id="@+id/notionStatusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text=""
+        android:textColor="@color/on_bg_dim"
+        android:textSize="12sp" />
+
+    <!-- 同期でDBを書き換える直前の控え。事故った時に直前へ戻す道 -->
+    <Button
+        android:id="@+id/snapshotButton"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="同期前の控えから戻す"
+        android:textColor="@color/primary" />
+
+    <Button
+        android:id="@+id/notionDisconnectButton"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="同期をやめる"
+        android:textColor="@color/on_bg_dim" />
+
+</LinearLayout>

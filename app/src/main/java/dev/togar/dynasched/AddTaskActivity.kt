@@ -25,9 +25,10 @@ class AddTaskActivity : AppCompatActivity() {
         const val EXTRA_PARENT_NAME = "parent_name"
     }
 
-    // 場所: 表示ラベル → API値
-    private val locationValues = arrayOf("anywhere", "home", "out")
-    private val locationLabels = arrayOf("どこでも", "家のみ", "外のみ")
+    // 場所: 表示ラベル → 値。場所は設定で増やせるので開くたびに作る
+    private val locationChoices by lazy { Places.taskChoices(Places.all(this)) }
+    private val locationValues by lazy { locationChoices.map { it.first } }
+    private val locationLabels by lazy { locationChoices.map { it.second } }
     // 優先度: 表示ラベル → 値
     private val priorityValues = arrayOf(3, 5, 8)
     private val priorityLabels = arrayOf("低", "中", "高")

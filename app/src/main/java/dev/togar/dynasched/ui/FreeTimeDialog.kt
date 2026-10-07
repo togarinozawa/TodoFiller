@@ -19,7 +19,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 「暇なとき」に、いまの状況（家か外か・何分あるか）を入れると
+ * 「暇なとき」に、いまの状況（どこにいるか・何分あるか）を入れると
  * やることを提示するダイアログ。GET /suggest をそのまま使う。
  *
  * 既定値は手を抜けるように寄せてある:
@@ -46,13 +46,15 @@ object FreeTimeDialog {
             textSize = 14f
         })
 
+        // 場所は設定で増やせる。横に並ぶのは3つまでで、それより多いと縦に積む
+        val places = dev.togar.dynasched.Places.all(ctx)
+        val current = Prefs.widgetLoc(ctx)
         val locGroup = RadioGroup(activity).apply {
-            orientation = RadioGroup.HORIZONTAL
-            val home = RadioButton(activity).apply { id = 1; text = "家" }
-            val out = RadioButton(activity).apply { id = 2; text = "外" }
-            addView(home)
-            addView(out)
-            check(if (Prefs.widgetLoc(ctx) == "out") 2 else 1)
+            orientation = if (places.size <= 3) RadioGroup.HORIZONTAL else RadioGroup.VERTICAL
+            for ((i, p) in places.withIndex()) {
+                addView(RadioButton(activity).apply { id = i + 1; text = p.name })
+            }
+            check(places.indexOfFirst { it.id == current }.coerceAtLeast(0) + 1)
         }
         root.addView(locGroup)
 
@@ -99,7 +101,8 @@ object FreeTimeDialog {
             .setView(root)
             .setNegativeButton("閉じる", null)
             .setPositiveButton("提案して") { _, _ ->
-                val loc = if (locGroup.checkedRadioButtonId == 2) "out" else "home"
+                val loc = places.getOrNull(locGroup.checkedRadioButtonId - 1)?.id
+                    ?: dev.togar.dynasched.Places.HOME
                 val raw = duration.totalMinutes.let { if (it <= 0) 30 else it }
                 val cap = minutesUntilBedtime(ctx)
                 val min = if (cap in 1 until raw) cap else raw
@@ -162,7 +165,7 @@ object FreeTimeDialog {
     }
 
     private fun showResult(activity: Activity, loc: String, min: Int, items: List<SuggestItem>) {
-        val locLabel = if (loc == "out") "外" else "家"
+        val locLabel = dev.togar.dynasched.Places.name(dev.togar.dynasched.Places.all(activity), loc)
         if (items.isEmpty()) {
             AlertDialog.Builder(activity)
                 .setTitle("$locLabel・${min}分")

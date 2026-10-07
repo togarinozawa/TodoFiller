@@ -61,6 +61,15 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
+        // 設定の詳細ページにいる時に「設定」をもう一度押したら目次へ戻す
+        nav.setOnItemReselectedListener { item ->
+            if (item.itemId == R.id.nav_settings) {
+                supportFragmentManager.popBackStack(
+                    null, androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE
+                )
+            }
+        }
+
         if (savedInstanceState == null) {
             nav.selectedItemId = R.id.nav_today
             if (intent?.getBooleanExtra(EXTRA_SHOW_FREE_TIME, false) == true) {
@@ -94,6 +103,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFragment(fragment: Fragment) {
+        // 設定の詳細ページは積んで開いている。別のタブへ移る時に払っておかないと、
+        // 戻るボタンで別タブの中に設定のページが出てくる
+        supportFragmentManager.popBackStackImmediate(
+            null, androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE
+        )
         supportFragmentManager.beginTransaction()
             .replace(R.id.container, fragment)
             .commit()

@@ -55,6 +55,17 @@ class CalendarRepoTest {
     }
 
     @Test
+    fun `設定で足した場所の名前が末尾なら、その場所の枠になる`() {
+        val places = dev.togar.dynasched.Places.DEFAULT + dev.togar.dynasched.Place("p1", "学校")
+        val e = CalendarRepo.classify("放課後 学校", jst(2026, 9, 1, 16, 0), jst(2026, 9, 1, 18, 0), false, 20, places)
+        val w = (e as CalEntry.Window).value
+        assertEquals("p1", w.location)
+        assertEquals("放課後", w.title)
+        // 足していなければ普通の予定
+        assertTrue(CalendarRepo.classify("放課後 学校", 0, 1, false, 21) is CalEntry.Busy)
+    }
+
+    @Test
     fun `旧記法の&h &o も使える`() {
         assertEquals("home", (CalendarRepo.classify("自習 &h", 0, 1, false, 3) as CalEntry.Window).value.location)
         assertEquals("out", (CalendarRepo.classify("移動 &o", 0, 1, false, 4) as CalEntry.Window).value.location)

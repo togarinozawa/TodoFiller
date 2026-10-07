@@ -70,6 +70,7 @@ object CalendarCheckDialog {
         if (s.calendarName.isEmpty()) {
             return "端末にカレンダーが見つかりませんでした。\nGoogleカレンダーの同期がONか確認してください。"
         }
+        val places = dev.togar.dynasched.Places.all(activity)
         val sb = StringBuilder()
         sb.append("カレンダー: ${s.calendarName}\n")
         val cal = CalendarRepo.listCalendars(activity)
@@ -86,13 +87,13 @@ object CalendarCheckDialog {
         if (s.skippedGenerated > 0) sb.append("自動生成(%)を読み飛ばし: ${s.skippedGenerated}件\n")
 
         if (s.windows.isEmpty()) {
-            sb.append("\n枠が0件です。予定のタイトルの末尾に「家」か「外」を付けてください。")
+            sb.append("\n枠が0件です。予定のタイトルの末尾に「${places.joinToString("」か「") { it.name }}」を付けてください。")
             sb.append("\n枠が無いと何も配置されません。")
         } else {
             sb.append("\n--- 作業できる枠 ---\n")
             for (w in s.windows.take(10)) {
                 sb.append("${w.start.substring(5, 16)} 〜 ${w.end.substring(11, 16)}  ")
-                sb.append(if (w.location == "out") "外" else "家")
+                sb.append(dev.togar.dynasched.Places.name(places, w.location))
                 sb.append("  ${w.title}\n")
             }
             if (s.windows.size > 10) sb.append("…ほか${s.windows.size - 10}件\n")

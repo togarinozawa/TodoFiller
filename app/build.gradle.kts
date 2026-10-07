@@ -25,13 +25,11 @@ val keystoreProps = Properties().apply {
 /**
  * デバッグ鍵で署名したリリースビルドを作る（`-PuseDebugKey=true`）。
  *
- * **配信中の版はデバッグ鍵（v31〜）。配る時は必ず `-PuseDebugKey=true` を付ける。**
+ * **配信中の版はリリース鍵（v46〜）。配る時は付けない。**
+ * v44まではデバッグ鍵で配っていた。友達に配るのを機に v46 でリリース鍵へ移した。
  *
  * 鍵を変えると上書き更新できない。Android は署名が違うAPKの上書きを拒否し、
  * 端末には「アプリがインストールされていません」としか出ない。
- * v29でリリース鍵へ移そうとしたが、そのたびにアンインストールと復元が要り、
- * 得るものが無かったので戻した。**利用者が本人だけのうちは移す理由が無い。**
- * 実際に配布する時が来たら、その時だけの作業として計画すること。
  */
 val useDebugKey = (project.findProperty("useDebugKey") as String?)?.toBoolean() == true
 val debugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
@@ -52,8 +50,8 @@ android {
         applicationId = "dev.togar.dynasched"
         minSdk = 26
         targetSdk = 34
-        versionCode = 40
-        versionName = "40.0"
+        versionCode = 47
+        versionName = "1.1"
         // 更新の確認先。GitHubの dist ブランチに最新版だけを置いてある。
         // サーバーは畳んだので、通信はここ1本だけ。
         buildConfigField(

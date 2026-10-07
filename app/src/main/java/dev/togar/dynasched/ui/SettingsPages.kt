@@ -24,7 +24,7 @@ import java.util.Locale
  * 設定の詳細ページの土台。見出しと戻る矢印を付け、中身は [layout] を差し込む。
  * 中身の配線は [setup] でやる（root はページの中身）。
  */
-abstract class SettingsPage(private val title: String, private val layout: Int) : Fragment() {
+abstract class SettingsPage(val title: String, private val layout: Int) : Fragment() {
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -453,8 +453,29 @@ class AboutSettingsPage : SettingsPage("アプリについて", R.layout.setting
     override fun setup(root: View) {
         root.findViewById<TextView>(R.id.userText).text =
             "端末内で動いています。ログインもサーバーも使いません。"
-        root.findViewById<TextView>(R.id.versionText).text =
-            "現在のバージョン: v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+        val versionText = root.findViewById<TextView>(R.id.versionText)
+        fun showVersion() {
+            versionText.text = "現在のバージョン: v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})" +
+                if (Prefs.ownerMode(requireContext())) "\n本人用モード: テスト版を受け取ります" else ""
+        }
+        showVersion()
+        // 版表記を7回たたくと本人用モードを切り替える。友達が偶然入らない程度に隠してある
+        var taps = 0
+        var lastTap = 0L
+        versionText.setOnClickListener {
+            val now = System.currentTimeMillis()
+            taps = if (now - lastTap < 1500) taps + 1 else 1
+            lastTap = now
+            if (taps < 7) return@setOnClickListener
+            taps = 0
+            val ctx = requireContext()
+            val on = !Prefs.ownerMode(ctx)
+            Prefs.setOwnerMode(ctx, on)
+            Toast.makeText(ctx,
+                if (on) "本人用モードにしました（Notion同期・テスト版の受け取り）" else "本人用モードを切りました",
+                Toast.LENGTH_LONG).show()
+            showVersion()
+        }
         root.findViewById<Button>(R.id.checkUpdateButton).setOnClickListener {
             Toast.makeText(requireContext(), "更新を確認中…", Toast.LENGTH_SHORT).show()
             (requireActivity() as? androidx.appcompat.app.AppCompatActivity)?.let {

@@ -88,8 +88,19 @@ object Api {
      * リポジトリに残るAPKは常に1つだけになる（普通にコミットすると、古いAPKが
      * 履歴に永久に積み上がる）。
      */
+    /**
+     * 更新の確認。**本人用モードの端末はテスト版を見る。**
+     * テスト版の置き場が無い時（404）は友達向けを見る。dist を作り直した直後などに、
+     * 本人だけ更新が止まるのを避けるため。
+     */
     fun getAppVersion(ctx: Context): AppVersionInfo {
-        val body = get(BuildConfig.UPDATE_MANIFEST_URL)
+        val body = if (!dev.togar.dynasched.Prefs.ownerMode(ctx)) get(BuildConfig.UPDATE_MANIFEST_URL)
+            else try {
+                get(BuildConfig.UPDATE_MANIFEST_URL_BETA)
+            } catch (e: ApiException) {
+                if (e.code != 404) throw e
+                get(BuildConfig.UPDATE_MANIFEST_URL)
+            }
         val o = JSONObject(body)
         return AppVersionInfo(
             versionCode = o.optInt("version_code", 0),

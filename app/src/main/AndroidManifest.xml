@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <!-- オンライン更新：ダウンロードしたAPKをインストールするために必要 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 準備画面の「電池の最適化から外す」。毎朝の組み直しと通知が止まる機種があるため -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- 端末のカレンダーを直接読み書きする。
          Googleカレンダーアプリが同期した内容にそのまま触れるので、
@@ -57,6 +59,12 @@
             android:name=".ui.HelpActivity"
             android:exported="false"
             android:label="使い方" />
+
+        <!-- はじめる前の準備。初回は使い方の次に出し、以降は設定から開く -->
+        <activity
+            android:name=".ui.SetupActivity"
+            android:exported="false"
+            android:label="はじめる前の準備" />
 
         <!-- 更新APKを他アプリ（インストーラ）に安全に渡すためのFileProvider -->
         <provider

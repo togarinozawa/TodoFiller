@@ -22,7 +22,18 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), dev.togar.dynasched.feedback.FeedbackBar.Named {
+
+    /** 「作者に送る」に添える画面名。タブで中身が変わるので、いま出しているタブを名乗る */
+    override fun feedbackScreenName(): String =
+        when (findViewById<BottomNavigationView>(R.id.bottomNav)?.selectedItemId) {
+            R.id.nav_today -> "今日"
+            R.id.nav_single -> "単発"
+            R.id.nav_material -> "教材"
+            R.id.nav_settings -> "設定" + (supportFragmentManager.findFragmentById(R.id.container)
+                ?.let { if (it is dev.togar.dynasched.ui.SettingsPage) "・" + it.title else "" } ?: "")
+            else -> "MainActivity"
+        }
 
     companion object {
         /** ウィジェットの「暇」から開かれたとき、条件入力ダイアログを出す */
@@ -36,7 +47,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         setContentView(R.layout.activity_main)
-        askNotificationPermission()
+        // 初回は準備画面でまとめて聞く。使い方の上に許可のダイアログを重ねない
+        if (Prefs.setupShown(this)) askNotificationPermission()
         syncNotifications()  // 予定タブを廃止したので、起動時に通知予約を更新する
         dev.togar.dynasched.notify.DailyRunReceiver.schedule(this)  // 毎日の自動実行を仕掛け直す
         dev.togar.dynasched.notify.BedtimeReceiver.schedule(this)   // 「今日はここまで」
@@ -77,6 +89,21 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    /**
+     * 初回は 使い方 → はじめる前の準備 の順に出す。
+     * 使い方を閉じて戻ってきた時に準備を出すので onResume で見る。
+     */
+    override fun onResume() {
+        super.onResume()
+        if (Prefs.helpShown(this) && !Prefs.setupShown(this) && !setupOpened) {
+            setupOpened = true
+            startActivity(Intent(this, dev.togar.dynasched.ui.SetupActivity::class.java))
+        }
+    }
+
+    /** 1回の起動で準備画面を何度も出さない（「あとで」と閉じた人を追い回さない） */
+    private var setupOpened = false
 
     /** すでに起動している状態でウィジェットの「暇」が押されたとき */
     override fun onNewIntent(intent: Intent) {

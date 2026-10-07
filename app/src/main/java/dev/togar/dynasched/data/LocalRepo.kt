@@ -197,7 +197,7 @@ object LocalRepo : Repo {
             placedMinutes = placed.sumOf { minutesBetween(it.start, it.end) },
             calRemoved = written.first,
             calAdded = written.second,
-            skipped = skipReasons(refreshed, snap, eng, days)
+            skipped = skipReasons(refreshed, snap, eng, days, dev.togar.dynasched.Places.all(ctx))
         )
     }
 
@@ -236,7 +236,8 @@ object LocalRepo : Repo {
      */
     private fun skipReasons(
         materials: List<MaterialRow>, snap: dev.togar.dynasched.calendar.CalendarSnapshot,
-        eng: StudyEngine, days: Int
+        eng: StudyEngine, days: Int,
+        places: List<dev.togar.dynasched.Place> = dev.togar.dynasched.Places.DEFAULT
     ): List<String> {
         val today = ymd()
         val examToday = snap.examPeriods.any { it.startDate <= today && today <= it.endDate }
@@ -256,8 +257,9 @@ object LocalRepo : Repo {
                         ?.let { eng.stateOf(it).finishedRounds < 1 } == true ->
                     "前提の教材が1周終わっていない"
                 examToday && !m.isExam -> "テスト期間中（定期テスト対象ではない）"
-                m.needs != "none" && snap.windows.none { it.location == "home" } ->
-                    "家の枠が無い（机・声・PCが要る教材）"
+                m.place != dev.togar.dynasched.Places.ANYWHERE &&
+                    snap.windows.none { it.location == m.place } ->
+                    "${dev.togar.dynasched.Places.name(places, m.place)}の枠が無い"
                 else -> null
             }
             if (reason != null) out.add("${m.name}: $reason")
@@ -348,13 +350,20 @@ object LocalRepo : Repo {
         NotionSyncer.syncSoon(ctx)
     }
 
-    override fun countHobbiesAt(ctx: Context, location: String): Int =
-        LocalDb.get(ctx).readableDatabase.rawQuery(
+    override fun countUsingPlace(ctx: Context, location: String): Pair<Int, Int> {
+        val db = LocalDb.get(ctx).readableDatabase
+        val tasks = db.rawQuery(
             "SELECT COUNT(*) n FROM hobby_tasks WHERE location=?", arrayOf(location)
         ).mapRows { it.int("n") }.firstOrNull() ?: 0
+        val materials = db.rawQuery(
+            "SELECT COUNT(*) n FROM materials WHERE is_active=1 AND location=?", arrayOf(location)
+        ).mapRows { it.int("n") }.firstOrNull() ?: 0
+        return tasks to materials
+    }
 
-    override fun moveHobbiesLocation(ctx: Context, from: String, to: String) {
+    override fun moveFromPlace(ctx: Context, from: String, to: String) {
         val db = LocalDb.get(ctx).writableDatabase
+        if (from != to) db.execSQL("UPDATE materials SET location=? WHERE location=?", arrayOf(to, from))
         val ids = db.rawQuery("SELECT id FROM hobby_tasks WHERE location=?", arrayOf(from))
             .mapRows { it.long("id") }
         if (ids.isEmpty()) return
@@ -478,7 +487,7 @@ object LocalRepo : Repo {
                 studyType = m.studyType, needs = m.needs, deadline = m.deadline,
                 firstRoundDeadline = m.firstRoundDeadline, prereqMaterialId = m.prereqMaterialId,
                 sessionMinutes = m.sessionMinutes, priority = m.priority, color = m.color,
-                memo = m.memo, isExam = m.isExam,
+                memo = m.memo, isExam = m.isExam, location = m.place,
                 round = st.round, perRound = st.perRound, doneInRound = st.doneInRound,
                 remainingProblems = st.remainingProblems, advancedProblems = st.advanced,
                 paceMinutes = Math.round(eng.paceFor(m.id, st.round) * 10) / 10.0,
@@ -600,7 +609,7 @@ object LocalRepo : Repo {
             val dlMs = Scheduler.parseDeadlineMillis(m.deadline) ?: continue
             val daysTo = Math.ceil((dlMs - todayMs).toDouble() / Scheduler.DAY_MS).toInt()
             if (daysTo < 0) continue
-            val need = if (m.needs == "none") "anywhere" else "home"
+            val need = m.place
             if (!(need == "anywhere" || loc == "anywhere" || need == loc)) continue
             m.prereqMaterialId?.let { pid ->
                 val p = materialRows(ctx).firstOrNull { it.id == pid }
@@ -668,7 +677,8 @@ object LocalRepo : Repo {
         priority = c.int("priority", 5),
         color = c.str("color", "#E24A90"),
         memo = c.str("memo"),
-        isExam = c.bool("is_exam")
+        isExam = c.bool("is_exam"),
+        location = c.str("location")
     )
 
     private fun hobbyRows(ctx: Context): List<HobbyRow> =
@@ -695,7 +705,7 @@ object LocalRepo : Repo {
         "study_type" to m.studyType, "needs" to m.needs,
         "session_minutes" to m.sessionMinutes, "priority" to m.priority,
         "color" to m.color.ifEmpty { "#E24A90" }, "memo" to m.memo,
-        "is_exam" to m.isExam, "is_active" to 1
+        "is_exam" to m.isExam, "is_active" to 1, "location" to m.location
     )
 
     /** 試験日をカレンダーへ書き、作られたイベントIDを控える */

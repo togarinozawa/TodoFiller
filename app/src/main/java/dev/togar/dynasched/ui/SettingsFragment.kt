@@ -42,7 +42,11 @@ class SettingsFragment : Fragment() {
         val ctx = requireContext()
         fun hhmm(m: Int) = String.format(java.util.Locale.US, "%02d:%02d", m / 60, m % 60)
         val wake = "${hhmm(Prefs.wakeMinutes(ctx))} 〜 ${hhmm(Prefs.bedtimeMinutes(ctx))}"
-        return listOf(
+        return listOfNotNull(
+            Entry("はじめる前の準備",
+                if (SetupActivity.needsAttention(ctx)) "まだ済んでいないものがあります" else "すべて済んでいます") {
+                startActivity(Intent(ctx, SetupActivity::class.java))
+            },
             Entry("場所", Places.all(ctx).joinToString("・") { it.name }) {
                 open(PlacesSettingsPage())
             },
@@ -53,14 +57,17 @@ class SettingsFragment : Fragment() {
             Entry("予定の自動配置", "${Prefs.fillDays(ctx)}日先まで埋める・カレンダーの確認") {
                 open(ScheduleSettingsPage())
             },
-            Entry("Notionと同期", if (Prefs.notionReady(ctx)) "接続済み" else "未接続") {
+            // Notion同期は本人用。友達には出さない（Prefs.ownerMode）
+            if (!Prefs.ownerMode(ctx)) null
+            else Entry("Notionと同期", if (Prefs.notionReady(ctx)) "接続済み" else "未接続") {
                 open(NotionSettingsPage())
             },
             Entry("バックアップ", "書き出し・復元") { open(BackupSettingsPage()) },
             Entry("使い方", "カレンダーの印の付け方・各画面の説明") {
                 startActivity(Intent(ctx, HelpActivity::class.java))
             },
-            Entry("アプリについて", "v${BuildConfig.VERSION_NAME}・更新の確認") {
+            Entry("アプリについて", "v${BuildConfig.VERSION_NAME}・更新の確認" +
+                if (Prefs.ownerMode(ctx)) "・本人用モード" else "") {
                 open(AboutSettingsPage())
             }
         )

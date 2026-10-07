@@ -11,7 +11,9 @@ class App : Application() {
         Notifications.ensureChannel(this)
 
         Api.appContext = applicationContext
-        // クラッシュの自動報告はやめた。送り先のサーバーを畳んだので、
-        // 送っても誰も見られない。落ちたら普通に端末のログに残る。
+        // 強制終了は端末に1件だけ残し、次に開いた時に「作者に送る」の帯を赤くする。
+        // 自動では送らない（送り先のサーバーは畳んだ）
+        dev.togar.dynasched.feedback.CrashLog.install(this)
+        dev.togar.dynasched.feedback.FeedbackBar.register(this)
     }
 }

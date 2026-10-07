@@ -233,8 +233,8 @@ object Scheduler {
             MatSlot(
                 row = m, st = st, deadlineMs = dlMs, daysTo = daysTo, session = session,
                 dailyBudget = budget,
-                // 机・声・PCが要るものは家の枠にしか置かない
-                location = if (m.needs == "none") "anywhere" else "home",
+                // 教材ごとに決めた場所の枠にだけ置く
+                location = m.place,
                 blockedByPrereq = blocked,
                 lastAtMs = engine.lastAttempt(m.id)
             )

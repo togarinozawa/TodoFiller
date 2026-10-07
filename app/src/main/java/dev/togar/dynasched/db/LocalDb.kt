@@ -142,8 +142,9 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
          * 5: hobby_tasks.created_at（増えた数を数えるため）
          * 6・7: 失われた v41〜v46 が使った番号。**使い回さない**（配布済みの端末に 7 がある）
          * 8: v40 系へ戻した版。中身は 5 と同じで、v46 の DB から上げられるように番号だけ飛ばした
+         * 9: materials.location（教材ごとの場所）
          */
-        private const val VERSION = 8
+        private const val VERSION = 9
 
         /** (テーブル, 列, 定義) */
         private val MIGRATIONS = listOf(
@@ -156,7 +157,9 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
             // 非定数の既定値を受け付けない。挿入時に明示して入れる。
             // 既存の行は空のままで、「増えた数」には数えない（[ui.Stats]）
             Triple("hobby_tasks", "created_at", "TEXT"),
-            Triple("hobby_tasks", "tags", "TEXT DEFAULT ''")
+            Triple("hobby_tasks", "tags", "TEXT DEFAULT ''"),
+            // 教材の場所。空なら needs から決める（Places.materialPlace）
+            Triple("materials", "location", "TEXT DEFAULT ''")
         )
 
         @Volatile private var instance: LocalDb? = null

@@ -8,7 +8,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="カレンダーの予定の題名の末尾に場所の名前を付けると、その場所で作業できる枠になります（例:「放課後 学校」）。タスクごとに「どこでも」か「〇〇のみ」を選べます。"
+        android:text="カレンダーの予定の題名の末尾に場所の名前を付けると、その場所で作業できる枠になります（例:「放課後 学校」）。タスクや教材ごとに「どこでも」か「〇〇のみ」を選べます。"
         android:textColor="@color/on_bg_dim"
         android:textSize="12sp" />
 

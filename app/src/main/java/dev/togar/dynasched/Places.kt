@@ -105,6 +105,13 @@ object Places {
     fun taskLabel(places: List<Place>, id: String?): String =
         places.firstOrNull { it.id == id }?.onlyLabel ?: ANYWHERE_LABEL
 
+    /**
+     * 教材の場所。v47までの教材は場所を持たず「必要なもの」から決めていた
+     * （何も要らなければどこでも、机・声・PCが要れば家）。場所が空ならそれに従う。
+     */
+    fun materialPlace(location: String, needs: String): String =
+        location.ifEmpty { if (needs == "none") ANYWHERE else HOME }
+
     /** タスクに選ばせる候補。先頭は「どこでも」 */
     fun taskChoices(places: List<Place>): List<Pair<String, String>> =
         listOf(ANYWHERE to ANYWHERE_LABEL) + places.map { it.id to it.onlyLabel }

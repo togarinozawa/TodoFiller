@@ -88,6 +88,14 @@ class PlacesTest {
     }
 
     @Test
+    fun `教材の場所は、決めていなければ必要なものから決める`() {
+        assertEquals("anywhere", Places.materialPlace("", "none"))
+        assertEquals("home", Places.materialPlace("", "desk"))
+        assertEquals("p1", Places.materialPlace("p1", "desk"))
+        assertEquals("anywhere", Places.materialPlace("anywhere", "pc"))
+    }
+
+    @Test
     fun `新しいidは被らない`() {
         val list = Places.DEFAULT + Place("p5", "a")
         assertEquals("p5-1", Places.newId(list, 5))

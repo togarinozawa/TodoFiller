@@ -40,6 +40,8 @@ data class MaterialItem(
     val color: String,
     val memo: String,
     val isExam: Boolean,
+    /** 場所のid。空なら needs から決める */
+    val location: String = "",
     // --- サーバーが計算して返す ---
     val round: Int,
     val perRound: Int,

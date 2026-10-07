@@ -331,13 +331,19 @@ class MaterialFragment : Fragment() {
         }
         layout.addView(typeSpinner)
 
-        layout.addView(label("必要なもの（外の枠に置けるのは「どこでも」だけ）"))
-        val needsSpinner = Spinner(ctx).apply {
-            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, MaterialItem.NEEDS_LABELS)
-            val idx = MaterialItem.NEEDS_VALUES.indexOf(existing?.needs ?: MaterialItem.NEEDS_NONE)
+        // 場所は単発タスクと同じく1件ずつ決める。以前の「必要なもの」は、
+        // 何も要らなければどこでも・机などが要れば家、として初期値にだけ使う
+        layout.addView(label("場所"))
+        val placeChoices = dev.togar.dynasched.Places.taskChoices(dev.togar.dynasched.Places.all(ctx))
+        val placeSpinner = Spinner(ctx).apply {
+            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item,
+                placeChoices.map { it.second })
+            // 新しい教材は家（演習は机が要るものが大半）
+            val cur = existing?.location?.ifEmpty { null } ?: dev.togar.dynasched.Places.HOME
+            val idx = placeChoices.indexOfFirst { it.first == cur }
             setSelection(if (idx >= 0) idx else 0)
         }
-        layout.addView(needsSpinner)
+        layout.addView(placeSpinner)
 
         val examSwitch = android.widget.Switch(ctx).apply {
             text = "定期テスト（テスト期間中はこれ優先）"
@@ -404,7 +410,8 @@ class MaterialFragment : Fragment() {
                     fmt(cal), if (useFirstRound) fmt(firstCal) else "",
                     prereqOptions[prereqSpinner.selectedItemPosition].first,
                     studyTypeValues[typeSpinner.selectedItemPosition],
-                    MaterialItem.NEEDS_VALUES[needsSpinner.selectedItemPosition],
+                    existing?.needs ?: MaterialItem.NEEDS_NONE,
+                    placeChoices[placeSpinner.selectedItemPosition].first,
                     sessionSlider.value, prioSlider.value,
                     CalColor.hexFor(CalColor.idAt(colorPalette.selectedIndex)),
                     memoInput.text.toString().trim(),
@@ -425,6 +432,7 @@ class MaterialFragment : Fragment() {
     private fun save(
         id: Long?, subject: String, name: String, total: Int, advanced: String, rounds: Int,
         deadline: String, firstDeadline: String, prereq: Long?, studyType: String, needs: String,
+        location: String,
         session: Int, priority: Int, color: String, memo: String, isExam: Boolean
     ) {
         val ctx = requireContext().applicationContext
@@ -432,7 +440,8 @@ class MaterialFragment : Fragment() {
             subject = subject, name = name, totalProblems = total, advancedRanges = advanced,
             targetRounds = rounds, deadline = deadline, firstRoundDeadline = firstDeadline,
             prereqMaterialId = prereq, studyType = studyType, needs = needs,
-            sessionMinutes = session, priority = priority, color = color, memo = memo, isExam = isExam
+            sessionMinutes = session, priority = priority, color = color, memo = memo, isExam = isExam,
+            location = location
         )
         Api.async(
             work = {

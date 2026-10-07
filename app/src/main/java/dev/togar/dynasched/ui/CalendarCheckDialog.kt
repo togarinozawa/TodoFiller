@@ -268,9 +268,17 @@ object CalendarCheckDialog {
     }
 
     /** カレンダーが複数ある時に、どれを見るかを選ばせる */
-    private fun chooseCalendar(activity: Activity) {
+    private fun chooseCalendar(activity: Activity) = pickCalendar(activity) { show(activity) }
+
+    /** 読み書きするカレンダーを選ばせる。準備画面からも使う */
+    fun pickCalendar(activity: Activity, onPicked: () -> Unit) {
         val cals = CalendarRepo.listCalendars(activity)
-        if (cals.isEmpty()) return
+        if (cals.isEmpty()) {
+            android.widget.Toast.makeText(activity,
+                "端末にカレンダーが見つかりませんでした。Googleカレンダーの同期がONか確認してください",
+                android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
         val labels = cals.map {
             (if (it.isPrimary) "★ " else "") + it.displayName +
                 (if (!it.canWrite) "（読み取り専用）" else "") + "\n" + it.accountName
@@ -279,7 +287,7 @@ object CalendarCheckDialog {
             .setTitle("読み取るカレンダー")
             .setItems(labels) { _, i ->
                 Prefs.setCalendarId(activity, cals[i].id)
-                show(activity)
+                onPicked()
             }
             .setNegativeButton("閉じる", null)
             .show()

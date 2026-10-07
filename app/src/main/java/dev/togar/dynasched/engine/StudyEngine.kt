@@ -32,8 +32,13 @@ data class MaterialRow(
     val priority: Int = 5,
     val color: String = "#E24A90",
     val memo: String = "",
-    val isExam: Boolean = false
-)
+    val isExam: Boolean = false,
+    /** 場所のid。空なら [needs] から決める（[dev.togar.dynasched.Places.materialPlace]） */
+    val location: String = ""
+) {
+    /** 実際に置いてよい場所 */
+    val place: String get() = dev.togar.dynasched.Places.materialPlace(location, needs)
+}
 
 /** 実績の集計（教材×周ごと） */
 data class AttemptAgg(val materialId: Long, val round: Int, val problems: Int, val minutes: Int)

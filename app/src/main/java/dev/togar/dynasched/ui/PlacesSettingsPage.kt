@@ -18,7 +18,7 @@ import dev.togar.dynasched.widget.SuggestWidgetProvider
 /**
  * 場所の一覧。足す・名前を変える・消す。
  *
- * **消した場所のタスクは「どこでも」に戻す。**消した場所を指したままだと、
+ * **消した場所のタスクと教材は「どこでも」に戻す。**消した場所を指したままだと、
  * その枠がもう無いので二度と配置されず、一覧からは理由が分からない。
  */
 class PlacesSettingsPage : SettingsPage("場所", R.layout.settings_places) {
@@ -112,7 +112,7 @@ class PlacesSettingsPage : SettingsPage("場所", R.layout.settings_places) {
             if (place.name == name) return
             Places.save(ctx, places.map { if (it.id == place.id) it.copy(name = name) else it })
             // Notionの選択肢は「〇〇のみ」の名前で持っているので、押し返して揃える
-            Api.async({ Repo.current(ctx).moveHobbiesLocation(ctx, place.id, place.id) }, {}, {})
+            Api.async({ Repo.current(ctx).moveFromPlace(ctx, place.id, place.id) }, {}, {})
             val msg = if (place.builtin)
                 "名前を変えました。末尾が「${place.tags().drop(1).joinToString("」「")}」の予定もそのまま読みます"
             else "名前を変えました。カレンダーの予定の末尾も「$name」に直してください"
@@ -123,17 +123,22 @@ class PlacesSettingsPage : SettingsPage("場所", R.layout.settings_places) {
 
     private fun confirmDelete(place: Place) {
         val ctx = requireContext().applicationContext
-        Api.async({ Repo.current(ctx).countHobbiesAt(ctx, place.id) }, { n ->
+        Api.async({ Repo.current(ctx).countUsingPlace(ctx, place.id) }, { (tasks, materials) ->
             if (!isAdded) return@async
-            val tasks = if (n > 0) "「${place.onlyLabel}」のタスク${n}件は「どこでも」になります。\n\n" else ""
+            val counts = listOfNotNull(
+                if (tasks > 0) "タスク${tasks}件" else null,
+                if (materials > 0) "教材${materials}件" else null
+            )
+            val used = if (counts.isEmpty()) ""
+                else "「${place.onlyLabel}」の${counts.joinToString("・")}は「どこでも」になります。\n\n"
             AlertDialog.Builder(requireContext())
                 .setTitle("「${place.name}」を消しますか")
-                .setMessage(tasks + "末尾が「${place.name}」のカレンダーの予定は、" +
+                .setMessage(used + "末尾が「${place.name}」のカレンダーの予定は、" +
                     "枠ではなく普通の予定（埋まっている時間）として読まれるようになります。")
                 .setPositiveButton("消す") { _, _ ->
                     Places.save(ctx, Places.all(ctx).filterNot { it.id == place.id })
                     Api.async({
-                        Repo.current(ctx).moveHobbiesLocation(ctx, place.id, Places.ANYWHERE)
+                        Repo.current(ctx).moveFromPlace(ctx, place.id, Places.ANYWHERE)
                     }, {}, {})
                     changed()
                 }

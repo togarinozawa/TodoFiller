@@ -130,6 +130,49 @@ object Prefs {
         sp(ctx).edit().putString("task_done_mode", name).apply()
     }
 
+    // ---- 本人用モード・友達への配布 ----
+
+    /**
+     * 本人用モード。Notion同期を出し、テスト版（version-beta.json）を受け取る。
+     * **友達の端末には出さない。**設定 → アプリについて → 版表記を7回たたくと切り替わる。
+     * 一度も切り替えていなければ、Notionのトークンが入っている端末を本人とみなす
+     * （友達はNotionの欄を見ないので、トークンが入るのは本人の端末だけ）。
+     * キー名は v46 と同じ。v46から上書きした端末でも設定が引き継がれる。
+     */
+    fun ownerMode(ctx: Context): Boolean {
+        val p = sp(ctx)
+        return if (p.contains("owner_mode")) p.getBoolean("owner_mode", false)
+            else notionToken(ctx).isNotEmpty()
+    }
+
+    fun setOwnerMode(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("owner_mode", on).apply()
+    }
+
+    /** 「はじめる前の準備」を一度通したか。初回は使い方の次に出す */
+    fun setupShown(ctx: Context): Boolean = sp(ctx).getBoolean("setup_shown", false)
+
+    fun setSetupShown(ctx: Context, shown: Boolean) {
+        sp(ctx).edit().putBoolean("setup_shown", shown).apply()
+    }
+
+    /** 強制終了の記録を作者に送った（または送らないと決めた）時刻。それより古い記録では帯を赤くしない */
+    fun crashReportedAt(ctx: Context): Long = sp(ctx).getLong("crash_reported_at", 0L)
+
+    fun setCrashReportedAt(ctx: Context, at: Long) {
+        sp(ctx).edit().putLong("crash_reported_at", at).apply()
+    }
+
+    /** 書きかけの「作者に送る」。閉じても消さない（長文を書いた後に押し間違えると心が折れる） */
+    fun feedbackDraft(ctx: Context): Pair<String, String> {
+        val p = sp(ctx)
+        return (p.getString("feedback_kind", "") ?: "") to (p.getString("feedback_text", "") ?: "")
+    }
+
+    fun setFeedbackDraft(ctx: Context, kind: String, text: String) {
+        sp(ctx).edit().putString("feedback_kind", kind).putString("feedback_text", text).apply()
+    }
+
     /** 初回の使い方案内を見たか。人に渡した時、最初の1回だけ出すため */
     fun helpShown(ctx: Context): Boolean = sp(ctx).getBoolean("help_shown", false)
 

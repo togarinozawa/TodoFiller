@@ -58,6 +58,11 @@ android {
             "String", "UPDATE_MANIFEST_URL",
             "\"https://raw.githubusercontent.com/togarinozawa/TodoFiller/dist/version.json\""
         )
+        // 本人用モードの端末が見るテスト版。本人が試してから友達向けへ出す（tools/publish-dist.sh）
+        buildConfigField(
+            "String", "UPDATE_MANIFEST_URL_BETA",
+            "\"https://raw.githubusercontent.com/togarinozawa/TodoFiller/dist/version-beta.json\""
+        )
     }
 
     signingConfigs {

@@ -54,40 +54,8 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <com.google.android.material.appbar.AppBarLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@color/bg"
-            app:elevation="0dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                app:layout_scrollFlags="scroll|enterAlways">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:paddingStart="16dp"
-                    android:paddingEnd="16dp"
-                    android:paddingBottom="4dp"
-                    android:text="カレンダーの日付をタップして教材を追加（その日が試験日）"
-                    android:textColor="@color/on_bg_dim"
-                    android:textSize="12sp" />
-
-                <CalendarView
-                    android:id="@+id/calendarView"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:theme="@android:style/Theme.Material" />
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="@color/surface_variant" />
-            </LinearLayout>
-        </com.google.android.material.appbar.AppBarLayout>
+        <!-- 以前はここに月のカレンダーがあり、日付を押すとその日を試験日にして教材を足せた。
+             一覧が下に押し出されて見づらいので外した。追加は「＋追加」から -->
 
         <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
             android:id="@+id/swipeRefresh"

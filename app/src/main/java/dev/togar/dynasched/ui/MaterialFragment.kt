@@ -8,7 +8,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.CalendarView
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -62,7 +61,6 @@ class MaterialFragment : Fragment() {
         swipe = root.findViewById(R.id.swipeRefresh)
         planSummary = root.findViewById(R.id.planSummary)
         val recycler = root.findViewById<RecyclerView>(R.id.recycler)
-        val calendar = root.findViewById<CalendarView>(R.id.calendarView)
         val addButton = root.findViewById<Button>(R.id.addMaterialButton)
 
         adapter = MaterialAdapter(
@@ -72,12 +70,6 @@ class MaterialFragment : Fragment() {
         recycler.layoutManager = LinearLayoutManager(requireContext())
         recycler.adapter = adapter
 
-        // カレンダーの日付タップ → その日を試験日に新規追加
-        calendar.setOnDateChangeListener { _, year, month, dayOfMonth ->
-            val c = Calendar.getInstance()
-            c.set(year, month, dayOfMonth, 23, 59, 0)
-            showMaterialDialog(null, c)
-        }
         addButton.setOnClickListener { showMaterialDialog(null, null) }
         swipe.setOnRefreshListener { load() }
         return root

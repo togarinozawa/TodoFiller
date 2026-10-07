@@ -50,7 +50,7 @@ android {
         applicationId = "dev.togar.dynasched"
         minSdk = 26
         targetSdk = 34
-        versionCode = 47
+        versionCode = 47   // 配布済みは48（v46の再署名）。次にこのソースから配る時は49以上
         versionName = "1.1"
         // 更新の確認先。GitHubの dist ブランチに最新版だけを置いてある。
         // サーバーは畳んだので、通信はここ1本だけ。

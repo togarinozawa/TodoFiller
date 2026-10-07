@@ -142,9 +142,10 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
          * 5: hobby_tasks.created_at（増えた数を数えるため）
          * 6・7: 失われた v41〜v46 が使った番号。**使い回さない**（配布済みの端末に 7 がある）
          * 8: v40 系へ戻した版。中身は 5 と同じで、v46 の DB から上げられるように番号だけ飛ばした
-         * 9: materials.location（教材ごとの場所）
+         * 9: v48（v46のAPKの番号だけ上げて配り直した版）が使った番号。**使い回さない**
+         * 10: materials.location（教材ごとの場所）
          */
-        private const val VERSION = 9
+        private const val VERSION = 10
 
         /** (テーブル, 列, 定義) */
         private val MIGRATIONS = listOf(

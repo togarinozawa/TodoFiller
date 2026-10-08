@@ -23,6 +23,8 @@ class AddTaskActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_PARENT_ID = "parent_id"
         const val EXTRA_PARENT_NAME = "parent_name"
+        /** 最初に選んでおく場所（「場所ごと」のタブから足した時） */
+        const val EXTRA_LOCATION = "location"
     }
 
     // 場所: 表示ラベル → 値。場所は設定で増やせるので開くたびに作る
@@ -66,6 +68,9 @@ class AddTaskActivity : AppCompatActivity() {
         // 家でやるものが大半なので「家のみ」を初期値にする。
         // 「どこでも」始まりだと、外の枠にも置ける前提で配置されてしまう
         locationSpinner.setSelection(locationValues.indexOf("home"))
+        intent.getStringExtra(EXTRA_LOCATION)?.let { loc ->
+            locationValues.indexOf(loc).takeIf { it >= 0 }?.let { locationSpinner.setSelection(it) }
+        }
         // 優先度はスワイプで選ぶ（スピナーを隠して同じ位置にスライダーを差し込む）
         prioritySpinner.visibility = android.view.View.GONE
         val prioritySlider = LabeledSlider(this, priorityValues.toList(), 5) { v ->

@@ -72,7 +72,8 @@ class ViewMenuTest {
             listOf(
                 ViewMenuAction.TagFilter, ViewMenuAction.TabSource, ViewMenuAction.HideGrouped,
                 ViewMenuAction.GroupsLast,
-                ViewMenuAction.StatsSpan, ViewMenuAction.CollapseAll, ViewMenuAction.ExpandAll
+                ViewMenuAction.StatsSpan, ViewMenuAction.BulkPlace,
+                ViewMenuAction.CollapseAll, ViewMenuAction.ExpandAll
             ),
             actions.map { it.action }
         )

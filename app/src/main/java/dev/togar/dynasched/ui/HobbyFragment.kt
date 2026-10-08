@@ -89,6 +89,10 @@ class HobbyFragment : Fragment() {
                 intent.putExtra(AddTaskActivity.EXTRA_PARENT_ID, g.id)
                 intent.putExtra(AddTaskActivity.EXTRA_PARENT_NAME, g.name)
             }
+            // 「実家のみ」のタブで足したら、最初から実家のみにしておく
+            currentTab().takeIf { it.startsWith("p:") }?.let {
+                intent.putExtra(AddTaskActivity.EXTRA_LOCATION, it.removePrefix("p:"))
+            }
             startActivity(intent)
         }
         sortButton.setOnClickListener { showViewMenu() }
@@ -208,6 +212,7 @@ class HobbyFragment : Fragment() {
                 ViewMenuAction.GroupsLast ->
                     Prefs.setTaskGroupsLast(ctx, !Prefs.taskGroupsLast(ctx))
                 ViewMenuAction.StatsSpan -> { showStatsSpan(); return@show }
+                ViewMenuAction.BulkPlace -> { bulkPlace(); return@show }
                 ViewMenuAction.CollapseAll -> Prefs.setCollapsed(ctx, allParentIds())
                 ViewMenuAction.ExpandAll -> Prefs.setCollapsed(ctx, emptySet())
             }
@@ -323,7 +328,7 @@ class HobbyFragment : Fragment() {
     private fun currentTab(): String {
         val ctx = requireContext()
         val key = Prefs.taskTab(ctx)
-        val list = TaskTabs.tabs(loaded, TabSource.from(Prefs.taskTabSource(ctx)))
+        val list = TaskTabs.tabs(loaded, TabSource.from(Prefs.taskTabSource(ctx)), dev.togar.dynasched.Places.all(ctx))
         return if (TaskTabs.exists(list, key)) key else TaskTabs.ALL
     }
 
@@ -334,7 +339,7 @@ class HobbyFragment : Fragment() {
     private fun rebuildTabs() {
         val ctx = requireContext()
         val source = TabSource.from(Prefs.taskTabSource(ctx))
-        val list = TaskTabs.applyOrder(TaskTabs.tabs(loaded, source), Prefs.taskTabOrder(ctx))
+        val list = TaskTabs.applyOrder(TaskTabs.tabs(loaded, source, dev.togar.dynasched.Places.all(ctx)), Prefs.taskTabOrder(ctx))
         if (list.isEmpty()) {
             tabs.visibility = View.GONE
             tabs.removeAllTabs()
@@ -455,7 +460,7 @@ class HobbyFragment : Fragment() {
         val ctx = requireContext()
         val order = Prefs.taskTabOrder(ctx)
         val list = if (subRow) TaskTabs.applyOrder(TaskTabs.subTabs(loaded, currentTab()), order)
-            else TaskTabs.applyOrder(TaskTabs.tabs(loaded, TabSource.from(Prefs.taskTabSource(ctx))), order)
+            else TaskTabs.applyOrder(TaskTabs.tabs(loaded, TabSource.from(Prefs.taskTabSource(ctx)), dev.togar.dynasched.Places.all(ctx)), order)
         val movable = list.drop(1)
         if (movable.size < 2) {
             Toast.makeText(ctx, "並べ替えるほどタブがありません", Toast.LENGTH_SHORT).show()
@@ -735,6 +740,93 @@ class HobbyFragment : Fragment() {
         Prefs.setGoalCelebratedOn(ctx, today.toString())
         view?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         Toast.makeText(ctx, "今日の目標 ${p.goal}件に届きました", Toast.LENGTH_SHORT).show()
+    }
+
+    // ---- 場所をまとめて変える ----
+
+    /**
+     * 場所ごとにタスクを選んで、別の場所へまとめて移す。
+     * 1件ずつ編集を開いて直すのは、数十件あると現実的に続かない。
+     * 「場所ごと」のタブで開いていれば、その場所から始める。
+     */
+    private fun bulkPlace() {
+        val ctx = requireContext()
+        val choices = dev.togar.dynasched.Places.taskChoices(dev.togar.dynasched.Places.all(ctx))
+        val tab = currentTab()
+        if (tab.startsWith("p:")) {
+            pickTasksAt(tab.removePrefix("p:"), choices)
+            return
+        }
+        val counts = choices.map { (id, _) -> movableAt(id).size }
+        AlertDialog.Builder(ctx)
+            .setTitle("どの場所のタスクを移しますか")
+            .setItems(choices.mapIndexed { i, c -> "${c.second}（${counts[i]}件）" }.toTypedArray()) { _, i ->
+                pickTasksAt(choices[i].first, choices)
+            }
+            .setNegativeButton("やめる", null)
+            .show()
+    }
+
+    /** 移せるタスク。済んでいない葉だけ（親の場所は配置に使わない） */
+    private fun movableAt(place: String): List<HobbyItem> {
+        val parents = loaded.mapNotNullTo(HashSet()) { it.parentId }
+        return loaded.filter {
+            !it.isCompleted && it.id !in parents &&
+                it.location.ifEmpty { dev.togar.dynasched.Places.ANYWHERE } == place
+        }
+    }
+
+    private fun pickTasksAt(
+        from: String, choices: List<Pair<String, String>>, preset: Set<Long> = emptySet()
+    ) {
+        val ctx = requireContext()
+        val items = movableAt(from)
+        val fromLabel = choices.firstOrNull { it.first == from }?.second ?: from
+        if (items.isEmpty()) {
+            Toast.makeText(ctx, "「$fromLabel」のタスクはありません", Toast.LENGTH_SHORT).show()
+            return
+        }
+        // 同じ名前の子が別の親の下にあることがあるので、親の名前も添える
+        val byId = loaded.associateBy { it.id }
+        val labels = items.map { t ->
+            val parent = t.parentId?.let { byId[it]?.name }
+            if (parent != null) "$parent › ${t.name}" else t.name
+        }
+        val picked = preset.toMutableSet()
+        AlertDialog.Builder(ctx)
+            .setTitle("「$fromLabel」から移すもの")
+            .setMultiChoiceItems(labels.toTypedArray(), BooleanArray(items.size) { items[it].id in picked }) { _, i, on ->
+                if (on) picked.add(items[i].id) else picked.remove(items[i].id)
+            }
+            .setPositiveButton("移す先へ") { _, _ ->
+                if (picked.isEmpty()) {
+                    Toast.makeText(ctx, "何も選ばれていません", Toast.LENGTH_SHORT).show()
+                } else pickDestination(from, picked, choices)
+            }
+            .setNeutralButton("全部選ぶ") { _, _ -> pickTasksAt(from, choices, items.mapTo(HashSet()) { it.id }) }
+            .setNegativeButton("やめる", null)
+            .show()
+    }
+
+    private fun pickDestination(from: String, ids: Set<Long>, choices: List<Pair<String, String>>) {
+        val ctx = requireContext()
+        val targets = choices.filter { it.first != from }
+        AlertDialog.Builder(ctx)
+            .setTitle("${ids.size}件をどこへ移しますか")
+            .setItems(targets.map { it.second }.toTypedArray()) { _, i ->
+                val (to, label) = targets[i]
+                val app = ctx.applicationContext
+                Api.async({ Repo.current(app).setHobbiesLocation(app, ids, to) }, {
+                    if (!isAdded) return@async
+                    Toast.makeText(requireContext(), "${ids.size}件を「$label」にしました", Toast.LENGTH_SHORT).show()
+                    load()
+                }, { e ->
+                    if (isAdded) Toast.makeText(requireContext(), "移せませんでした: ${Api.friendlyMessage(e)}",
+                        Toast.LENGTH_LONG).show()
+                })
+            }
+            .setNegativeButton("やめる", null)
+            .show()
     }
 
     /** 大きいタスクを子タスクに分ける。子は親の場所・優先度・色・タグを引き継ぐ */

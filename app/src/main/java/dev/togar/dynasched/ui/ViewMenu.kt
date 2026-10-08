@@ -47,6 +47,7 @@ sealed class ViewMenuAction {
     object GroupsLast : ViewMenuAction()
     object StatsSpan : ViewMenuAction()
     object CollapseAll : ViewMenuAction()
+    object BulkPlace : ViewMenuAction()
     object ExpandAll : ViewMenuAction()
 }
 
@@ -126,6 +127,7 @@ object ViewMenu {
         )
 
         rows.add(ViewMenuRow.Section(BULK))
+        rows.add(ViewMenuRow.Action(ViewMenuAction.BulkPlace, "場所をまとめて変える", opensDialog = true))
         rows.add(ViewMenuRow.Action(ViewMenuAction.CollapseAll, "すべて畳む"))
         rows.add(ViewMenuRow.Action(ViewMenuAction.ExpandAll, "すべて開く"))
 

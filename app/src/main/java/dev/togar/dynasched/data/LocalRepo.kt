@@ -548,6 +548,21 @@ object LocalRepo : Repo {
         return awards
     }
 
+    override fun setHobbiesLocation(ctx: Context, ids: Collection<Long>, location: String) {
+        if (ids.isEmpty()) return
+        val db = LocalDb.get(ctx).writableDatabase
+        db.beginTransaction()
+        try {
+            for (id in ids) db.execSQL("UPDATE hobby_tasks SET location=? WHERE id=?", arrayOf(location, id))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        // 場所はNotionが正の項目なので、端末で変えたら押し返す
+        ids.forEach { NotionSyncer.markDirty(ctx, it) }
+        NotionSyncer.syncSoon(ctx)
+    }
+
     override fun countUsingPlace(ctx: Context, location: String): Pair<Int, Int> {
         val db = LocalDb.get(ctx).readableDatabase
         val tasks = db.rawQuery(

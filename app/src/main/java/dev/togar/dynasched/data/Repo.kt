@@ -85,6 +85,9 @@ interface Repo {
     /** オヤスギの合計と今日の分 */
     fun points(ctx: Context): PointsSummary
 
+    /** 選んだタスクの場所をまとめて変える（入寮して「実家のみ」と「寮でも」を分け直す時など） */
+    fun setHobbiesLocation(ctx: Context, ids: Collection<Long>, location: String)
+
     /** その場所を指しているタスク（完了したものも含む）と教材の数 */
     fun countUsingPlace(ctx: Context, location: String): Pair<Int, Int>
 

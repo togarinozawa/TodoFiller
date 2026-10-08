@@ -313,7 +313,9 @@ enum class TabSource(val label: String) {
     TOP("一番上のグループだけ"),
     /** 子を持つタスクは全部タブにする。深い所の小グループも並ぶ */
     GROUP("グループごと（入れ子も）"),
-    TAG("タグごと");
+    TAG("タグごと"),
+    /** 「実家のみ」「寮のみ」…。帰省したらやることを一か所で見るため */
+    PLACE("場所ごと");
 
     companion object {
         fun from(name: String?): TabSource = entries.firstOrNull { it.name == name } ?: NONE
@@ -338,7 +340,10 @@ object TaskTabs {
     /** 「すべて」タブのキー。常に先頭に置く */
     const val ALL = ""
 
-    fun tabs(all: List<HobbyItem>, source: TabSource): List<TaskTab> {
+    fun tabs(
+        all: List<HobbyItem>, source: TabSource,
+        places: List<dev.togar.dynasched.Place> = dev.togar.dynasched.Places.DEFAULT
+    ): List<TaskTab> {
         if (source == TabSource.NONE) return emptyList()
         val head = TaskTab(ALL, "すべて")
         return when (source) {
@@ -347,6 +352,9 @@ object TaskTabs {
             TabSource.TOP -> listOf(head) + groupTabs(all) { it.parentId == null }
             TabSource.GROUP -> listOf(head) + groupTabs(all) { true }
             TabSource.TAG -> listOf(head) + Tags.known(all).map { TaskTab("t:$it", "#$it") }
+            // 場所は空でも出す。「実家のみ」がいつも同じ所にある方が、帰省した時に探さずに済む
+            TabSource.PLACE -> listOf(head) + places.map { TaskTab("p:${it.id}", it.onlyLabel) } +
+                TaskTab("p:${dev.togar.dynasched.Places.ANYWHERE}", dev.togar.dynasched.Places.ANYWHERE_LABEL)
             TabSource.NONE -> emptyList()
         }
     }
@@ -378,8 +386,25 @@ object TaskTabs {
             if (id == null) all else TaskList.descendantsOf(all, id)
         }
         key.startsWith("t:") -> Tags.filterTree(all, setOf(key.removePrefix("t:")))
+        key.startsWith("p:") -> placeTree(all, key.removePrefix("p:"))
         hideGrouped -> withoutTabbed(all, source)
         else -> all
+    }
+
+    /**
+     * その場所のタスク。**場所を見るのは葉だけ**で、親は並びを保つために残す。
+     * 親の場所は配下と食い違っていることがある（配下だけ直した時など）ので、当てにしない。
+     */
+    fun placeTree(all: List<HobbyItem>, place: String): List<HobbyItem> {
+        val parents = all.mapNotNullTo(HashSet()) { it.parentId }
+        fun locOf(i: HobbyItem) = i.location.ifEmpty { dev.togar.dynasched.Places.ANYWHERE }
+        val keep = all.filter { it.id !in parents && locOf(it) == place }.mapTo(HashSet()) { it.id }
+        val byId = all.associateBy { it.id }
+        for (id in keep.toList()) {
+            var p = byId[id]?.parentId
+            while (p != null && keep.add(p)) p = byId[p]?.parentId
+        }
+        return all.filter { it.id in keep }
     }
 
     /** タブになっている塊（と、その配下）を落とす */

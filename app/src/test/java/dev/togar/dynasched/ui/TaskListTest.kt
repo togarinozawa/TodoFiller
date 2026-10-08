@@ -271,6 +271,24 @@ class TaskListTest {
     }
 
     @Test
+    fun `場所ごとのタブ。葉の場所で絞り、親は並びのために残す`() {
+        val places = dev.togar.dynasched.Places.DEFAULT + dev.togar.dynasched.Place("p1", "寮")
+        val tabs = TaskTabs.tabs(tree, TabSource.PLACE, places)
+        assertEquals(listOf("", "p:home", "p:out", "p:p1", "p:anywhere"), tabs.map { it.key })
+        assertEquals("寮のみ", tabs[3].label)
+        val items = listOf(
+            HobbyItem(id = 1, name = "帰省", parentId = null, isCompleted = false, location = "anywhere"),
+            HobbyItem(id = 2, name = "部屋の片付け", parentId = 1, isCompleted = false, location = "home"),
+            HobbyItem(id = 3, name = "レポート", parentId = 1, isCompleted = false, location = "p1"),
+            HobbyItem(id = 4, name = "散歩", parentId = null, isCompleted = false, location = "")
+        )
+        assertEquals(listOf(1L, 2L), TaskTabs.apply(items, "p:home").map { it.id })
+        assertEquals(listOf(1L, 3L), TaskTabs.apply(items, "p:p1").map { it.id })
+        // 親は葉ではないので「どこでも」には数えない。場所の空はどこでも
+        assertEquals(listOf(4L), TaskTabs.apply(items, "p:anywhere").map { it.id })
+    }
+
+    @Test
     fun `タブの並びを当てる。先頭は動かさず、新しいタブは後ろ`() {
         val tabs = listOf(TaskTab("", "すべて"), TaskTab("g:1", "仕事"),
             TaskTab("g:2", "家事"), TaskTab("g:3", "趣味"))

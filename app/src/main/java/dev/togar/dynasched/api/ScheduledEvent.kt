@@ -17,7 +17,9 @@ data class ScheduledEvent(
     val endDatetime: String,
     val eventType: String,
     val isCompleted: Boolean,
-    val materialId: Long? = null
+    val materialId: Long? = null,
+    /** 手で置いた・動かした予定。組み直しでは消さず、その時間を避けて置く */
+    val isManual: Boolean = false
 ) {
     /** 開始時刻を Date に変換（失敗したら null） */
     fun startAsDate(): Date? = parse(startDatetime)
@@ -68,7 +70,8 @@ data class ScheduledEvent(
             endDatetime = o.optString("end_datetime", ""),
             eventType = o.optString("event_type", "study"),
             isCompleted = o.optInt("is_completed", 0) == 1,
-            materialId = o.optLong("material_id", 0L).let { if (it > 0L) it else null }
+            materialId = o.optLong("material_id", 0L).let { if (it > 0L) it else null },
+            isManual = o.optInt("is_manual", 0) == 1
         )
 
         /** 端末内キャッシュ用のシリアライズ（サーバーのJSONと同じ形） */
@@ -84,6 +87,7 @@ data class ScheduledEvent(
                         .put("event_type", ev.eventType)
                         .put("is_completed", if (ev.isCompleted) 1 else 0)
                         .put("material_id", ev.materialId ?: 0L)
+                        .put("is_manual", if (ev.isManual) 1 else 0)
                 )
             }
             return arr.toString()

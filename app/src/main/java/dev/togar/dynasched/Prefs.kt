@@ -19,6 +19,22 @@ object Prefs {
     private fun sp(ctx: Context) =
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
+    /** 指定したキーのうち、いま入っている値（真偽・整数・文字列だけ）。控えの書き出し用 */
+    fun values(ctx: Context, keys: Set<String>): Map<String, Any> =
+        sp(ctx).all.filter { (k, v) -> k in keys && (v is Boolean || v is Int || v is String) }
+            .mapValues { it.value!! }
+
+    /** 控えから戻す。型は値に合わせる */
+    fun putValues(ctx: Context, values: Map<String, Any>) {
+        val e = sp(ctx).edit()
+        for ((k, v) in values) when (v) {
+            is Boolean -> e.putBoolean(k, v)
+            is Int -> e.putInt(k, v)
+            is String -> e.putString(k, v)
+        }
+        e.apply()
+    }
+
     fun saveCachedEvents(ctx: Context, json: String) {
         sp(ctx).edit().putString(KEY_EVENTS, json).apply()
     }
@@ -171,6 +187,64 @@ object Prefs {
 
     fun setFeedbackDraft(ctx: Context, kind: String, text: String) {
         sp(ctx).edit().putString("feedback_kind", kind).putString("feedback_text", text).apply()
+    }
+
+    // ---- カレンダー画面・配置の好み（v41〜v46で足したもの）----
+
+    /** タスク一覧で、塊（子を持つタスク）を単独のタスクより後ろに並べるか */
+    fun taskGroupsLast(ctx: Context): Boolean = sp(ctx).getBoolean("task_groups_last", true)
+
+    fun setTaskGroupsLast(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("task_groups_last", on).apply()
+    }
+
+    /** 片付けた時などの動き。酔う人・電池を気にする人のために切れるようにしてある */
+    fun animations(ctx: Context): Boolean = sp(ctx).getBoolean("animations", true)
+
+    fun setAnimations(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("animations", on).apply()
+    }
+
+    /** アプリの枠を使う時も、カレンダーの予定（埋まっている時間）を避けるか */
+    fun avoidBusy(ctx: Context): Boolean = sp(ctx).getBoolean("avoid_busy", true)
+
+    fun setAvoidBusy(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("avoid_busy", on).apply()
+    }
+
+    /** カレンダー画面を横向き（横に日付・縦に時間）で見せるか */
+    fun calendarHorizontal(ctx: Context): Boolean = sp(ctx).getBoolean("calendar_horizontal", true)
+
+    fun setCalendarHorizontal(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("calendar_horizontal", on).apply()
+    }
+
+    /** 単発タスクを置く順（engine.TaskOrder の名前） */
+    fun taskOrder(ctx: Context): String = sp(ctx).getString("task_order", "OLDEST") ?: "OLDEST"
+
+    fun setTaskOrder(ctx: Context, name: String) {
+        sp(ctx).edit().putString("task_order", name).apply()
+    }
+
+    /** 同じ塊のタスクをまとめて置くか散らすか（engine.Grouping の名前） */
+    fun grouping(ctx: Context): String = sp(ctx).getString("grouping", "FREE") ?: "FREE"
+
+    fun setGrouping(ctx: Context, name: String) {
+        sp(ctx).edit().putString("grouping", name).apply()
+    }
+
+    /** 1日に片付けたい件数。0なら未設定（これまでの実績から決める） */
+    fun dailyGoal(ctx: Context): Int = sp(ctx).getInt("daily_goal", 0)
+
+    fun setDailyGoal(ctx: Context, n: Int) {
+        sp(ctx).edit().putInt("daily_goal", n).apply()
+    }
+
+    /** 目標に届いた祝いを出した日。同じ日に何度も出さない */
+    fun goalCelebratedOn(ctx: Context): String = sp(ctx).getString("goal_celebrated_on", "") ?: ""
+
+    fun setGoalCelebratedOn(ctx: Context, day: String) {
+        sp(ctx).edit().putString("goal_celebrated_on", day).apply()
     }
 
     /** 初回の使い方案内を見たか。人に渡した時、最初の1回だけ出すため */

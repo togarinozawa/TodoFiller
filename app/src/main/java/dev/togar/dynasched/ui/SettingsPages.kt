@@ -202,7 +202,7 @@ class BackupSettingsPage : SettingsPage("バックアップ", R.layout.settings_
                 androidx.appcompat.app.AlertDialog.Builder(requireContext())
                     .setTitle("書き出しました")
                     .setMessage(
-                        "教材 ${r.materials}件 / 実績 ${r.attempts}件 / 単発タスク ${r.hobbies}件\n\n" +
+                        "${r.describe()}\n\n" +
                             "**アプリを入れ直すと端末内のデータは消えます。**\n" +
                             "このファイルをクラウドなど別の場所にも置いておいてください。"
                     )
@@ -231,7 +231,7 @@ class BackupSettingsPage : SettingsPage("バックアップ", R.layout.settings_
                 androidx.appcompat.app.AlertDialog.Builder(requireContext())
                     .setTitle("復元しますか？")
                     .setMessage(
-                        "控えの中身:\n教材 ${r.materials}件 / 実績 ${r.attempts}件 / 単発タスク ${r.hobbies}件\n\n" +
+                        "控えの中身:\n${r.describe()}\n\n" +
                             "**いま端末にあるデータは全部消えて、この控えで置き換わります。**\n" +
                             "予定は消えるので、復元後にスケジューラを実行してください。"
                     )
@@ -255,7 +255,7 @@ class BackupSettingsPage : SettingsPage("バックアップ", R.layout.settings_
                 androidx.appcompat.app.AlertDialog.Builder(requireContext())
                     .setTitle("復元しました")
                     .setMessage(
-                        "教材 ${r.materials}件 / 実績 ${r.attempts}件 / 単発タスク ${r.hobbies}件\n\n" +
+                        "${r.describe()}\n\n" +
                             "予定はまだありません。「スケジューラ実行」を押してください。"
                     )
                     .setPositiveButton("OK", null)

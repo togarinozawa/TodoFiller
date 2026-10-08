@@ -20,6 +20,8 @@ data class HobbyItem(
     val sortOrder: Int = 0,
     /** タグ。カンマ区切りで1列に持つ（[dev.togar.dynasched.ui.Tags] が読み書きする） */
     val tags: String = "",
+    /** 作った日時（`yyyy-MM-dd HH:mm:ss`）。古い行は空。止まっているタスクの見分けに使う */
+    val createdAt: String = "",
     var level: Int = 0,
     var hasChildren: Boolean = false  // 子を持つタスクはチェックボックス非表示（葉のみ完了可能）
 ) {

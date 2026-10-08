@@ -59,7 +59,7 @@ object Snapshots {
     }
 
     fun restore(ctx: Context, file: File): Backup.Report =
-        Backup.restore(ctx, file.readText())
+        Backup.restore(ctx, file.readText(), withPrefs = false)
 
     /** 古い分を落とす */
     private fun prune(ctx: Context) {

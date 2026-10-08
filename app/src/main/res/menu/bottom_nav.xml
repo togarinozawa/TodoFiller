@@ -1,19 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
-        android:id="@+id/nav_today"
         android:icon="@drawable/ic_today"
-        android:title="今日" />
+        android:id="@+id/nav_today"
+        android:title="カレンダー"/>
     <item
-        android:id="@+id/nav_single"
         android:icon="@drawable/ic_single"
-        android:title="単発" />
+        android:id="@+id/nav_single"
+        android:title="タスク"/>
     <item
-        android:id="@+id/nav_material"
+        android:icon="@drawable/ic_recurring"
+        android:id="@+id/nav_routine"
+        android:title="習慣"/>
+    <item
         android:icon="@drawable/ic_goal"
-        android:title="教材" />
+        android:id="@+id/nav_material"
+        android:title="予定"/>
     <item
-        android:id="@+id/nav_settings"
         android:icon="@drawable/ic_settings"
-        android:title="設定" />
+        android:id="@+id/nav_settings"
+        android:title="設定"/>
 </menu>

@@ -16,7 +16,6 @@ import dev.togar.dynasched.ui.FreeTimeDialog
 import dev.togar.dynasched.ui.MaterialFragment
 import dev.togar.dynasched.ui.HobbyFragment
 import dev.togar.dynasched.ui.SettingsFragment
-import dev.togar.dynasched.ui.TodayFragment
 import dev.togar.dynasched.update.UpdateChecker
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -25,15 +24,12 @@ import java.util.Locale
 class MainActivity : AppCompatActivity(), dev.togar.dynasched.feedback.FeedbackBar.Named {
 
     /** 「作者に送る」に添える画面名。タブで中身が変わるので、いま出しているタブを名乗る */
-    override fun feedbackScreenName(): String =
-        when (findViewById<BottomNavigationView>(R.id.bottomNav)?.selectedItemId) {
-            R.id.nav_today -> "今日"
-            R.id.nav_single -> "単発"
-            R.id.nav_material -> "教材"
-            R.id.nav_settings -> "設定" + (supportFragmentManager.findFragmentById(R.id.container)
-                ?.let { if (it is dev.togar.dynasched.ui.SettingsPage) "・" + it.title else "" } ?: "")
-            else -> "MainActivity"
-        }
+    override fun feedbackScreenName(): String {
+        val nav = findViewById<BottomNavigationView>(R.id.bottomNav) ?: return ""
+        val tab = nav.menu.findItem(nav.selectedItemId)?.title?.toString() ?: ""
+        val page = supportFragmentManager.findFragmentById(R.id.container) as? dev.togar.dynasched.ui.SettingsPage
+        return if (page != null) "$tab・${page.title}" else tab
+    }
 
     companion object {
         /** ウィジェットの「暇」から開かれたとき、条件入力ダイアログを出す */
@@ -50,6 +46,7 @@ class MainActivity : AppCompatActivity(), dev.togar.dynasched.feedback.FeedbackB
         // 初回は準備画面でまとめて聞く。使い方の上に許可のダイアログを重ねない
         if (Prefs.setupShown(this)) askNotificationPermission()
         syncNotifications()  // 予定タブを廃止したので、起動時に通知予約を更新する
+        makeRoutineTasks()   // 今日のぶんの習慣をタスクにする
         dev.togar.dynasched.notify.DailyRunReceiver.schedule(this)  // 毎日の自動実行を仕掛け直す
         dev.togar.dynasched.notify.BedtimeReceiver.schedule(this)   // 「今日はここまで」
         UpdateChecker.check(this)  // オンライン更新の確認（新しい版があれば案内）
@@ -63,11 +60,12 @@ class MainActivity : AppCompatActivity(), dev.togar.dynasched.feedback.FeedbackB
         val nav = findViewById<BottomNavigationView>(R.id.bottomNav)
         nav.setOnItemSelectedListener { item ->
             val fragment: Fragment = when (item.itemId) {
-                R.id.nav_today -> TodayFragment()
+                R.id.nav_today -> dev.togar.dynasched.ui.CalendarFragment()
                 R.id.nav_single -> HobbyFragment()
+                R.id.nav_routine -> dev.togar.dynasched.ui.RoutineFragment()
                 R.id.nav_material -> MaterialFragment()
                 R.id.nav_settings -> SettingsFragment()
-                else -> TodayFragment()
+                else -> dev.togar.dynasched.ui.CalendarFragment()
             }
             showFragment(fragment)
             true
@@ -96,7 +94,9 @@ class MainActivity : AppCompatActivity(), dev.togar.dynasched.feedback.FeedbackB
      */
     override fun onResume() {
         super.onResume()
-        if (Prefs.helpShown(this) && !Prefs.setupShown(this) && !setupOpened) {
+        // 全部済んでいる端末（v46から上げた人など）には出さない
+        if (Prefs.helpShown(this) && !Prefs.setupShown(this) && !setupOpened &&
+            dev.togar.dynasched.ui.SetupActivity.needsAttention(this)) {
             setupOpened = true
             startActivity(Intent(this, dev.togar.dynasched.ui.SetupActivity::class.java))
         }
@@ -116,7 +116,7 @@ class MainActivity : AppCompatActivity(), dev.togar.dynasched.feedback.FeedbackB
 
     /**
      * 今日の予定を取得してローカル通知を予約し直す（バックグラウンド）。
-     * 予定タブを廃止したので起動時に必ず1度通す。TodayFragment も同じものを見るが、
+     * 予定タブを廃止したので起動時に必ず1度通す。カレンダー画面も同じものを見るが、
      * ScheduleRepo が重複要求をまとめるので通信は1回で済む。
      */
     private fun syncNotifications() {
@@ -126,6 +126,18 @@ class MainActivity : AppCompatActivity(), dev.togar.dynasched.feedback.FeedbackB
             work = { ScheduleRepo.refresh(ctx, today) },
             onSuccess = { /* 予約はrefreshの中で済んでいる */ },
             onError = { /* 通信できない時は何もしない */ }
+        )
+    }
+
+    /** 今日のぶんの習慣をタスクにする。作ったらウィジェットも直す */
+    private fun makeRoutineTasks() {
+        val ctx = applicationContext
+        Api.async(
+            work = { dev.togar.dynasched.data.Repo.current(ctx).generateRoutines(ctx) },
+            onSuccess = { made ->
+                if (made > 0) dev.togar.dynasched.widget.SuggestWidgetProvider.updateAll(ctx)
+            },
+            onError = { /* 作れなくても起動は続ける */ }
         )
     }
 

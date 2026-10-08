@@ -92,6 +92,43 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
          * Notion側を畳めたら消す。
          */
         db.execSQL(
+            """CREATE TABLE IF NOT EXISTS routines (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'daily',
+                weekdays TEXT DEFAULT '',
+                day_of_month INTEGER NOT NULL DEFAULT 1,
+                duration_minutes INTEGER NOT NULL DEFAULT 30,
+                priority INTEGER NOT NULL DEFAULT 5,
+                location TEXT DEFAULT 'anywhere',
+                color TEXT DEFAULT '',
+                tags TEXT DEFAULT '',
+                last_made TEXT DEFAULT '',
+                is_active INTEGER NOT NULL DEFAULT 1
+            )"""
+        )
+        // アプリの中で決める「タスクを置いてよい時間」（calendar.Slot）
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS availability (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                weekday INTEGER NOT NULL DEFAULT 0,
+                date TEXT DEFAULT '',
+                start_min INTEGER NOT NULL DEFAULT 0,
+                end_min INTEGER NOT NULL DEFAULT 0,
+                location TEXT DEFAULT 'anywhere',
+                is_block INTEGER NOT NULL DEFAULT 0
+            )"""
+        )
+        // 入ったオヤスギ。タスクごとに1行（同じタスクで二度入らないように主キーにしてある）
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS oyasugi (
+                task_id INTEGER PRIMARY KEY,
+                amount INTEGER NOT NULL DEFAULT 1,
+                is_group INTEGER NOT NULL DEFAULT 0,
+                awarded_at TEXT
+            )"""
+        )
+        db.execSQL(
             """CREATE TABLE IF NOT EXISTS notion_tombstones (
                 page_id TEXT PRIMARY KEY,
                 deleted_at TEXT DEFAULT (datetime('now','localtime'))
@@ -159,6 +196,10 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
             // 既存の行は空のままで、「増えた数」には数えない（[ui.Stats]）
             Triple("hobby_tasks", "created_at", "TEXT"),
             Triple("hobby_tasks", "tags", "TEXT DEFAULT ''"),
+            // 習慣から作ったタスク。片付くまで同じ習慣から次を作らない
+            Triple("hobby_tasks", "routine_id", "INTEGER DEFAULT 0"),
+            // 手で置いた・動かした予定。組み直しで消さない
+            Triple("scheduled_events", "is_manual", "INTEGER DEFAULT 0"),
             // 教材の場所。空なら needs から決める（Places.materialPlace）
             Triple("materials", "location", "TEXT DEFAULT ''")
         )

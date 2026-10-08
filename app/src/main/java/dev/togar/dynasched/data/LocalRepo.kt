@@ -10,6 +10,8 @@ import dev.togar.dynasched.api.ScheduledEvent
 import dev.togar.dynasched.api.SuggestItem
 import dev.togar.dynasched.calendar.CalendarRepo
 import dev.togar.dynasched.calendar.CalendarWriter
+import dev.togar.dynasched.calendar.Slot
+import dev.togar.dynasched.calendar.Slots
 import dev.togar.dynasched.db.LocalDb
 import dev.togar.dynasched.db.bool
 import dev.togar.dynasched.db.int
@@ -62,7 +64,8 @@ object LocalRepo : Repo {
                 endDatetime = c.str("end_datetime"),
                 eventType = c.str("event_type", "study"),
                 isCompleted = c.bool("is_completed"),
-                materialId = c.longOrNull("material_id")?.let { if (it > 0) it else null }
+                materialId = c.longOrNull("material_id")?.let { if (it > 0) it else null },
+                isManual = c.bool("is_manual")
             )
         }
     }
@@ -124,7 +127,7 @@ object LocalRepo : Repo {
         val planDays = maxOf(days, PLAN_DAYS)
         val calId = Prefs.calendarId(ctx) ?: CalendarRepo.targetCalendar(ctx)?.id
         // 計画に必要な日数ぶん読む。配置側は先頭 days 日しか見ないので余分は害にならない
-        val snap = CalendarRepo.read(ctx, planDays, calId)
+        val snap = withAppSlots(ctx, CalendarRepo.read(ctx, planDays, calId), planDays)
         val materials = materialRows(ctx)
         val hobbies = hobbyRows(ctx)
         val eng = engine(ctx)
@@ -145,15 +148,29 @@ object LocalRepo : Repo {
         }
         val refreshed = materialRows(ctx)
 
-        // 未完了かつこれからの予定だけ作り直す。済んだものは記録なので残す
+        // 未完了かつこれからの予定だけ作り直す。済んだものは記録なので残す。
+        // **手で置いた・動かしたものは残す**（組み直すたびに戻されると、動かす意味が無い）
         db.execSQL(
-            "DELETE FROM scheduled_events WHERE COALESCE(is_completed,0)=0 AND start_datetime >= ?",
+            "DELETE FROM scheduled_events WHERE COALESCE(is_completed,0)=0 " +
+                "AND COALESCE(is_manual,0)=0 AND start_datetime >= ?",
             arrayOf(nowNaive())
         )
+        // 手で置いたものは埋まっている時間として避ける
+        val manual = db.rawQuery(
+            "SELECT title, start_datetime, end_datetime FROM scheduled_events " +
+                "WHERE COALESCE(is_completed,0)=0 AND COALESCE(is_manual,0)=1 AND start_datetime >= ?",
+            arrayOf(nowNaive())
+        ).mapRows { c ->
+            dev.togar.dynasched.calendar.BusyBlock(
+                c.str("start_datetime"), c.str("end_datetime"), c.str("title"), 0L
+            )
+        }
 
         val placed = Scheduler.run(
-            refreshed, hobbies, snap.windows, snap.busy, snap.examPeriods, eng, days,
-            wakeStart = wake, wakeEnd = bed
+            refreshed, hobbies, snap.windows, snap.busy + manual, snap.examPeriods, eng, days,
+            wakeStart = wake, wakeEnd = bed,
+            order = dev.togar.dynasched.engine.TaskOrder.from(Prefs.taskOrder(ctx)),
+            grouping = dev.togar.dynasched.engine.Grouping.from(Prefs.grouping(ctx))
         )
         db.beginTransaction()
         try {
@@ -175,8 +192,12 @@ object LocalRepo : Repo {
 
         // カレンダーへ書き戻す（末尾「%」で全置換）
         val written = if (calId != null) {
+            // 手で置いたものも書く。書かないと、カレンダーからは消えたように見える
             CalendarWriter.replaceGenerated(
-                ctx, calId, placed.map { Triple(it.title, it.start, it.end) }, days
+                ctx, calId,
+                placed.map { Triple(it.title, it.start, it.end) } +
+                    manual.map { Triple(it.title, it.start, it.end) },
+                days
             )
         } else 0 to 0
 
@@ -285,7 +306,8 @@ object LocalRepo : Repo {
                 priority = c.int("priority", 5),
                 color = c.str("color"),
                 sortOrder = c.int("sort_order"),
-                tags = c.str("tags")
+                tags = c.str("tags"),
+                createdAt = c.str("created_at")
             )
         }
 
@@ -350,6 +372,182 @@ object LocalRepo : Repo {
         NotionSyncer.syncSoon(ctx)
     }
 
+    // ---- 習慣 ----
+
+    override fun routines(ctx: Context): List<Routine> =
+        LocalDb.get(ctx).readableDatabase.rawQuery(
+            "SELECT * FROM routines ORDER BY is_active DESC, id", null
+        ).mapRows { c ->
+            Routine(
+                id = c.long("id"),
+                name = c.str("name"),
+                kind = c.str("kind", "daily"),
+                weekdays = Routines.decodeWeekdays(c.str("weekdays")),
+                dayOfMonth = c.int("day_of_month", 1),
+                durationMinutes = c.int("duration_minutes", 30),
+                priority = c.int("priority", 5),
+                location = c.str("location", "anywhere"),
+                color = c.str("color"),
+                tags = c.str("tags"),
+                lastMade = c.str("last_made"),
+                isActive = c.bool("is_active")
+            )
+        }
+
+    override fun saveRoutine(ctx: Context, routine: Routine): Long {
+        val db = LocalDb.get(ctx).writableDatabase
+        val v = values(
+            "name" to routine.name, "kind" to routine.kind,
+            "weekdays" to Routines.encodeWeekdays(routine.weekdays),
+            "day_of_month" to routine.dayOfMonth, "duration_minutes" to routine.durationMinutes,
+            "priority" to routine.priority, "location" to routine.location,
+            "color" to routine.color, "tags" to Tags.normalize(routine.tags),
+            "last_made" to routine.lastMade, "is_active" to routine.isActive
+        )
+        if (routine.id > 0) {
+            db.update("routines", v, "id=?", arrayOf(routine.id.toString()))
+            return routine.id
+        }
+        return db.insert("routines", null, v)
+    }
+
+    override fun deleteRoutine(ctx: Context, id: Long) {
+        LocalDb.get(ctx).writableDatabase.execSQL("DELETE FROM routines WHERE id=?", arrayOf(id))
+    }
+
+    /**
+     * 今日の分の習慣をタスクにする。作った数を返す。
+     * **前に作った物がまだ片付いていない習慣からは作らない**（[Routines.isDue]）。
+     */
+    override fun generateRoutines(ctx: Context): Int {
+        val db = LocalDb.get(ctx).writableDatabase
+        val today = java.time.LocalDate.now()
+        val open = db.rawQuery(
+            "SELECT DISTINCT routine_id FROM hobby_tasks WHERE is_active=1 " +
+                "AND COALESCE(is_completed,0)=0 AND COALESCE(routine_id,0)>0", null
+        ).mapRows { it.long("routine_id") }.toHashSet()
+        var made = 0
+        for (r in routines(ctx)) {
+            if (!Routines.isDue(r, today, r.id in open)) continue
+            val next = db.rawQuery(
+                "SELECT COALESCE(MAX(sort_order),0)+1 n FROM hobby_tasks WHERE parent_id IS NULL", null
+            ).mapRows { it.int("n") }.firstOrNull() ?: 1
+            db.insert("hobby_tasks", null, values(
+                "name" to r.name, "parent_id" to null, "duration_minutes" to r.durationMinutes,
+                "priority" to r.priority, "location" to r.location, "note" to "",
+                "color" to r.color, "tags" to Tags.normalize(r.tags),
+                "is_active" to 1, "is_completed" to 0, "sort_order" to next,
+                "created_at" to nowNaive(), "routine_id" to r.id
+            ))
+            db.execSQL("UPDATE routines SET last_made=? WHERE id=?", arrayOf(today.toString(), r.id))
+            made++
+        }
+        if (made > 0) NotionSyncer.syncSoon(ctx)
+        return made
+    }
+
+    // ---- アプリの枠 ----
+
+    override fun slots(ctx: Context): List<Slot> =
+        LocalDb.get(ctx).readableDatabase.rawQuery(
+            "SELECT * FROM availability ORDER BY weekday, date, start_min", null
+        ).mapRows { c ->
+            Slot(
+                id = c.long("id"), weekday = c.int("weekday"), date = c.str("date"),
+                startMin = c.int("start_min"), endMin = c.int("end_min"),
+                location = c.str("location", "anywhere"), isBlock = c.bool("is_block")
+            )
+        }
+
+    override fun addSlot(ctx: Context, slot: Slot): Long =
+        LocalDb.get(ctx).writableDatabase.insert("availability", null, slotValues(slot))
+
+    override fun updateSlot(ctx: Context, slot: Slot) {
+        LocalDb.get(ctx).writableDatabase
+            .update("availability", slotValues(slot), "id=?", arrayOf(slot.id.toString()))
+    }
+
+    override fun deleteSlot(ctx: Context, id: Long) {
+        LocalDb.get(ctx).writableDatabase.execSQL("DELETE FROM availability WHERE id=?", arrayOf(id))
+    }
+
+    private fun slotValues(s: Slot) = values(
+        "weekday" to s.weekday, "date" to s.date, "start_min" to s.startMin,
+        "end_min" to s.endMin, "location" to s.location, "is_block" to s.isBlock
+    )
+
+    /**
+     * アプリの枠があれば、**カレンダーの印の枠の代わりに**それを使う。
+     * カレンダーの予定（埋まっている時間）を避けるかは設定で決める（[Prefs.avoidBusy]）。
+     */
+    private fun withAppSlots(
+        ctx: Context, read: dev.togar.dynasched.calendar.CalendarSnapshot, days: Int
+    ): dev.togar.dynasched.calendar.CalendarSnapshot {
+        val list = slots(ctx)
+        val windows = if (list.isEmpty()) read.windows
+            else Slots.toWindows(Slots.expand(list, java.time.LocalDate.now(), days))
+        return read.copy(windows = windows, busy = if (Prefs.avoidBusy(ctx)) read.busy else emptyList())
+    }
+
+    // ---- 手で置く ----
+
+    /** 予定を動かす。動かした物は手で置いた物として扱う（組み直しで戻さない） */
+    override fun moveEvent(ctx: Context, id: Long, start: String, end: String) {
+        LocalDb.get(ctx).writableDatabase.execSQL(
+            "UPDATE scheduled_events SET start_datetime=?, end_datetime=?, is_manual=1 WHERE id=?",
+            arrayOf(start, end, id)
+        )
+    }
+
+    /** 単発タスクを時間を決めて置く */
+    override fun placeTask(ctx: Context, hobbyTaskId: Long, start: String, end: String) {
+        val item = getHobbyItem(ctx, hobbyTaskId) ?: return
+        LocalDb.get(ctx).writableDatabase.insert("scheduled_events", null, values(
+            "title" to item.name, "start_datetime" to start, "end_datetime" to end,
+            "event_type" to "hobby", "hobby_task_id" to hobbyTaskId,
+            "is_completed" to 0, "is_manual" to 1
+        ))
+    }
+
+    override fun setEventManual(ctx: Context, id: Long, manual: Boolean) {
+        LocalDb.get(ctx).writableDatabase.execSQL(
+            "UPDATE scheduled_events SET is_manual=? WHERE id=?", arrayOf(if (manual) 1 else 0, id)
+        )
+    }
+
+    /** 置いた予定を外す。タスクそのものは残る */
+    override fun unplaceEvent(ctx: Context, id: Long) {
+        LocalDb.get(ctx).writableDatabase.execSQL("DELETE FROM scheduled_events WHERE id=?", arrayOf(id))
+    }
+
+    // ---- オヤスギ ----
+
+    override fun points(ctx: Context): PointsSummary {
+        val db = LocalDb.get(ctx).readableDatabase
+        val total = db.rawQuery("SELECT COALESCE(SUM(amount),0) n FROM oyasugi", null)
+            .mapRows { it.int("n") }.firstOrNull() ?: 0
+        val today = db.rawQuery(
+            "SELECT COALESCE(SUM(amount),0) n FROM oyasugi WHERE substr(awarded_at,1,10)=?",
+            arrayOf(java.time.LocalDate.now().toString())
+        ).mapRows { it.int("n") }.firstOrNull() ?: 0
+        return PointsSummary(total, today)
+    }
+
+    /** 片付けた時に入るオヤスギを記録する。同じタスクで二度は入らない */
+    private fun award(ctx: Context, id: Long): List<dev.togar.dynasched.ui.Award> {
+        val db = LocalDb.get(ctx).writableDatabase
+        val already = db.rawQuery("SELECT task_id FROM oyasugi", null)
+            .mapRows { it.long("task_id") }.toHashSet()
+        val awards = dev.togar.dynasched.ui.Oyasugi.awards(getHobby(ctx), id, already)
+        for (a in awards) {
+            db.insertWithOnConflict("oyasugi", null, values(
+                "task_id" to a.taskId, "amount" to a.amount, "is_group" to a.isGroup,
+                "awarded_at" to nowNaive()
+            ), android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE)
+        }
+        return awards
+    }
+
     override fun countUsingPlace(ctx: Context, location: String): Pair<Int, Int> {
         val db = LocalDb.get(ctx).readableDatabase
         val tasks = db.rawQuery(
@@ -409,12 +607,13 @@ object LocalRepo : Repo {
     /** 片付いた数・増えた数を数えるための最小限の行 */
     override fun statRows(ctx: Context): List<StatRow> =
         LocalDb.get(ctx).readableDatabase.rawQuery(
-            "SELECT created_at, completed_at, is_completed FROM hobby_tasks WHERE is_active=1", null
+            "SELECT name, created_at, completed_at, is_completed FROM hobby_tasks WHERE is_active=1", null
         ).mapRows { c ->
             StatRow(
                 createdAt = c.str("created_at").ifEmpty { null },
                 completedAt = c.str("completed_at").ifEmpty { null },
-                completed = c.bool("is_completed")
+                completed = c.bool("is_completed"),
+                name = c.str("name")
             )
         }
 
@@ -443,9 +642,13 @@ object LocalRepo : Repo {
         NotionSyncer.syncSoon(ctx)
     }
 
-    override fun completeHobby(ctx: Context, id: Long) = setHobbyCompleted(ctx, id, true)
+    override fun completeHobby(ctx: Context, id: Long) {
+        setHobbyCompleted(ctx, id, true)
+    }
 
-    override fun setHobbyCompleted(ctx: Context, id: Long, completed: Boolean) {
+    override fun setHobbyCompleted(
+        ctx: Context, id: Long, completed: Boolean
+    ): List<dev.togar.dynasched.ui.Award> {
         LocalDb.get(ctx).writableDatabase.update("hobby_tasks", values(
             "is_completed" to completed,
             "completed_at" to if (completed) nowNaive() else null
@@ -453,6 +656,8 @@ object LocalRepo : Repo {
         // dirty は付けない。完了はスキマスが正なので、次の同期で食い違いとして
         // 拾われる。圏外で落ちても繋がった時に勝手に揃う
         NotionSyncer.syncSoon(ctx)
+        // 外した時はオヤスギを戻さない（付け直して稼げないよう、入るのは1タスク1回だけ）
+        return if (completed) award(ctx, id) else emptyList()
     }
 
     override fun deleteHobby(ctx: Context, id: Long) {
@@ -692,7 +897,9 @@ object LocalRepo : Repo {
                 name = c.str("name"),
                 durationMinutes = maxOf(15, c.int("duration_minutes", 30)),
                 priority = c.int("priority", 5),
-                location = c.str("location", "anywhere")
+                location = c.str("location", "anywhere"),
+                parentId = c.longOrNull("parent_id"),
+                createdAt = c.str("created_at")
             )
         }
 

@@ -19,22 +19,45 @@ import java.util.Locale
  *    その時に端末内のDBは丸ごと消える
  * 2. 機種変更。端末内完結にした以上、サーバーに控えは無い
  *
- * 形式はJSONで、**列は総当たりで写す**。列を足すたびにここを直すことにすると、
- * いつか直し忘れて「書き出したのに一部だけ消えている」という最悪の壊れ方をする。
- * 取り込み側は、いま存在する列だけを拾う（古い控えも新しい控えも読める）。
+ * 形式はJSONで、**表も列も総当たりで写す**。足すたびにここを直すことにすると、
+ * いつか直し忘れて「書き出したのに一部だけ消えている」という最悪の壊れ方をする
+ * （v44までは習慣と枠がそれで漏れていた）。取り込み側は、いま存在する表と列だけを拾う。
+ *
+ * 版2はv45からの形。版1（教材・実績・単発タスクだけ）の控えもそのまま読める。
  */
 object Backup {
 
     const val FORMAT = "skimas-backup"
-    const val VERSION = 1
+    const val VERSION = 2
 
-    /** 予定(scheduled_events)は配置し直せば作れるので控えない */
-    private val TABLES = listOf("materials", "attempts", "hobby_tasks")
+    /** 控えない表。予定は配置し直せば作れる。墓標はNotionとの対応で、別の端末では意味が無い */
+    private val SKIP_TABLES = setOf("scheduled_events", "notion_tombstones", "android_metadata")
 
-    /** 一緒に控える設定。カレンダーIDは端末ごとに違うので入れない */
-    private val PREF_KEYS = listOf("fill_days", "task_sort", "task_done_mode", "places", "owner_mode", "task_tab_order")
+    /**
+     * 一緒に控える設定。カレンダーIDは端末ごとに違うので入れない。
+     * **Notionのトークンは入れない**（持ち出したファイルが漏れるとワークスペースごと触られる）。
+     */
+    private val PREF_KEYS = setOf(
+        "fill_days", "task_sort", "task_done_mode", "owner_mode", "notion_schema",
+        "wake_min", "bedtime_min", "bedtime_notice", "avoid_busy", "animations",
+        "task_order", "grouping", "calendar_horizontal", "daily_goal",
+        "task_show_stats", "task_stats_span", "task_tab_source", "task_all_hides_grouped",
+        "task_groups_last", "widget_loc",
+        // v47で足したもの
+        "places", "task_tab_order"
+    )
 
-    data class Report(val materials: Int, val attempts: Int, val hobbies: Int)
+    /** 控える表。端末にある表から、控えないものを除く */
+    fun tablesToBackUp(all: Collection<String>): List<String> =
+        all.filter { it !in SKIP_TABLES && !it.startsWith("sqlite_") }.sorted()
+
+    data class Report(
+        val materials: Int, val attempts: Int, val hobbies: Int,
+        val routines: Int = 0, val frames: Int = 0
+    ) {
+        fun describe(): String =
+            "単発タスク ${hobbies}件 / 習慣 ${routines}件 / 枠 ${frames}件 / 教材 ${materials}件 / 実績 ${attempts}件"
+    }
 
     fun suggestedFileName(): String {
         val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
@@ -53,16 +76,27 @@ object Backup {
             "exported_at",
             SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(Date())
         )
-        for (t in TABLES) {
+        for (t in tablesToBackUp(tablesOf(db))) {
             val arr = JSONArray()
             db.rawQuery("SELECT * FROM $t", null).use { c ->
                 while (c.moveToNext()) arr.put(rowToJson(c))
             }
             root.put(t, arr)
         }
-        root.put("prefs", prefsToJson(ctx))
+        val prefs = JSONObject()
+        for ((k, v) in Prefs.values(ctx, PREF_KEYS)) prefs.put(k, v)
+        // 本人用モードは「未設定ならNotionのトークンで決める」ので、決めた結果を書いておく
+        prefs.put("owner_mode", Prefs.ownerMode(ctx))
+        root.put("prefs", prefs)
         return root.toString(2)
     }
+
+    private fun tablesOf(db: android.database.sqlite.SQLiteDatabase): List<String> =
+        db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null).use { c ->
+            val out = ArrayList<String>()
+            while (c.moveToNext()) out.add(c.getString(0))
+            out
+        }
 
     private fun rowToJson(c: Cursor): JSONObject {
         val o = JSONObject()
@@ -78,30 +112,30 @@ object Backup {
         return o
     }
 
-    private fun prefsToJson(ctx: Context): JSONObject {
-        val o = JSONObject()
-        o.put("fill_days", Prefs.fillDays(ctx))
-        o.put("task_sort", Prefs.taskSort(ctx))
-        o.put("task_done_mode", Prefs.taskDoneMode(ctx))
-        // 場所はタスクが id で指している。控えに無いと、戻した後の「学校のみ」が読めなくなる
-        o.put("places", dev.togar.dynasched.Places.toJson(dev.togar.dynasched.Places.all(ctx)))
-        // 本人の端末を入れ直した時に、テスト版の受け取りが黙って止まらないように
-        o.put("owner_mode", Prefs.ownerMode(ctx))
-        o.put("task_tab_order", org.json.JSONArray(Prefs.taskTabOrder(ctx)))
-        return o
-    }
-
     // ---- 取り込み ----
 
     /** 中身を見ずに件数だけ数える（復元前に「何が入るのか」を見せるため） */
     fun peek(json: String): Report {
         val root = JSONObject(json)
         check(root.optString("format") == FORMAT) { "スキマスの控えではありません" }
+        fun n(t: String) = root.optJSONArray(t)?.length() ?: 0
         return Report(
-            materials = root.optJSONArray("materials")?.length() ?: 0,
-            attempts = root.optJSONArray("attempts")?.length() ?: 0,
-            hobbies = root.optJSONArray("hobby_tasks")?.length() ?: 0
+            materials = n("materials"), attempts = n("attempts"), hobbies = n("hobby_tasks"),
+            routines = n("routines"), frames = n("availability")
         )
+    }
+
+    /** 控えの設定のうち、戻してよいものだけ。JSONの数は Long で来ることがあるので Int に直す */
+    fun prefsFromJson(o: JSONObject): Map<String, Any> {
+        val out = HashMap<String, Any>()
+        for (k in o.keys()) {
+            if (k !in PREF_KEYS) continue
+            when (val v = o.get(k)) {
+                is Boolean, is String, is Int -> out[k] = v
+                is Long -> out[k] = v.toInt()
+            }
+        }
+        return out
     }
 
     /**
@@ -110,18 +144,22 @@ object Backup {
      * 教材ID・親タスクIDといった参照が控えの中で閉じているので、
      * 混ぜると「前提の教材」や親子関係がよそを指しかねない。
      * 予定は消して作り直す（教材IDを指しているため）。
+     * 控えに無い表は触らない（版1の控えで習慣や枠を消さないため）。
+     *
+     * @param withPrefs 設定も戻すか。同期前の控えから戻す時は、設定はいまのままにする
      */
-    fun restore(ctx: Context, json: String): Report {
+    fun restore(ctx: Context, json: String, withPrefs: Boolean = true): Report {
         val root = JSONObject(json)
         check(root.optString("format") == FORMAT) { "スキマスの控えではありません" }
         val db = LocalDb.get(ctx).writableDatabase
         val report = peek(json)
+        val tables = tablesToBackUp(tablesOf(db)).filter { root.has(it) }
         db.beginTransaction()
         try {
             db.execSQL("DELETE FROM scheduled_events")
-            for (t in TABLES) {
+            for (t in tables) {
                 db.execSQL("DELETE FROM $t")
-                val arr = root.optJSONArray(t) ?: continue
+                val arr = root.getJSONArray(t)
                 val columns = columnsOf(db, t)
                 for (i in 0 until arr.length()) {
                     insertRow(db, t, arr.getJSONObject(i), columns)
@@ -131,7 +169,7 @@ object Backup {
         } finally {
             db.endTransaction()
         }
-        root.optJSONObject("prefs")?.let { restorePrefs(ctx, it) }
+        if (withPrefs) root.optJSONObject("prefs")?.let { Prefs.putValues(ctx, prefsFromJson(it)) }
         return report
     }
 
@@ -161,23 +199,5 @@ object Backup {
             }
         }
         if (v.size() > 0) db.insert(table, null, v)
-    }
-
-    private fun restorePrefs(ctx: Context, o: JSONObject) {
-        for (key in PREF_KEYS) {
-            if (!o.has(key)) continue
-            when (key) {
-                "fill_days" -> Prefs.setFillDays(ctx, o.optInt(key, 7))
-                "task_sort" -> Prefs.setTaskSort(ctx, o.optString(key, "MANUAL"))
-                "task_done_mode" -> Prefs.setTaskDoneMode(ctx, o.optString(key, "INLINE"))
-                "owner_mode" -> Prefs.setOwnerMode(ctx, o.optBoolean(key, false))
-                "task_tab_order" -> o.optJSONArray(key)?.let { a ->
-                    Prefs.setTaskTabOrder(ctx, (0 until a.length()).map { a.optString(it) })
-                }
-                "places" -> o.optJSONArray(key)?.let {
-                    dev.togar.dynasched.Places.save(ctx, dev.togar.dynasched.Places.parse(it.toString()))
-                }
-            }
-        }
     }
 }

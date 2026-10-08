@@ -46,7 +46,8 @@ interface Repo {
         priority: Int, location: String, note: String, color: String, tags: String = ""
     )
     fun completeHobby(ctx: Context, id: Long)
-    fun setHobbyCompleted(ctx: Context, id: Long, completed: Boolean)
+    /** 完了を付け外しする。付けた時に入ったオヤスギを返す */
+    fun setHobbyCompleted(ctx: Context, id: Long, completed: Boolean): List<dev.togar.dynasched.ui.Award>
     fun deleteHobby(ctx: Context, id: Long)
 
     /** 同じ親を持つタスクの並び順を、渡された順で保存する */
@@ -57,6 +58,32 @@ interface Repo {
 
     /** 優先度だけを変える（優先度順で並び替えたとき） */
     fun setHobbyPriority(ctx: Context, id: Long, priority: Int)
+
+    // ---- 習慣 ----
+
+    fun routines(ctx: Context): List<Routine>
+    /** 新しければ足し、あれば書き換える。id を返す */
+    fun saveRoutine(ctx: Context, routine: Routine): Long
+    fun deleteRoutine(ctx: Context, id: Long)
+    /** 今日の分の習慣をタスクにする。作った数を返す */
+    fun generateRoutines(ctx: Context): Int
+
+    // ---- アプリの枠（カレンダー画面でドラッグして作る）----
+
+    fun slots(ctx: Context): List<dev.togar.dynasched.calendar.Slot>
+    fun addSlot(ctx: Context, slot: dev.togar.dynasched.calendar.Slot): Long
+    fun updateSlot(ctx: Context, slot: dev.togar.dynasched.calendar.Slot)
+    fun deleteSlot(ctx: Context, id: Long)
+
+    // ---- 手で置く ----
+
+    fun moveEvent(ctx: Context, id: Long, start: String, end: String)
+    fun placeTask(ctx: Context, hobbyTaskId: Long, start: String, end: String)
+    fun setEventManual(ctx: Context, id: Long, manual: Boolean)
+    fun unplaceEvent(ctx: Context, id: Long)
+
+    /** オヤスギの合計と今日の分 */
+    fun points(ctx: Context): PointsSummary
 
     /** その場所を指しているタスク（完了したものも含む）と教材の数 */
     fun countUsingPlace(ctx: Context, location: String): Pair<Int, Int>

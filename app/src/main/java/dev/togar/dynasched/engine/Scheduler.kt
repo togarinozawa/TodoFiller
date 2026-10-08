@@ -32,8 +32,34 @@ data class HobbyRow(
     val name: String,
     val durationMinutes: Int,
     val priority: Int,
-    val location: String
+    val location: String,
+    /** 塊（親）。まとめる・散らすの判定に使う */
+    val parentId: Long? = null,
+    /** 作った日時。古い順・新しい順に使う。古い行は空 */
+    val createdAt: String = ""
 )
+
+/** 単発タスクを置く順 */
+enum class TaskOrder(val label: String) {
+    OLDEST("古い順（溜めない）"),
+    NEWEST("新しい順（勢い優先）"),
+    PRIORITY("優先度が高い順");
+
+    companion object {
+        fun from(name: String?): TaskOrder = entries.firstOrNull { it.name == name } ?: OLDEST
+    }
+}
+
+/** 同じ塊のタスクを、同じ日に続けて置くか散らすか */
+enum class Grouping(val label: String) {
+    CLUSTER("まとめて置く"),
+    SPREAD("散らして置く"),
+    FREE("気にしない");
+
+    companion object {
+        fun from(name: String?): Grouping = entries.firstOrNull { it.name == name } ?: FREE
+    }
+}
 
 /** 日内の空き区間（分） */
 data class FreeSlot(val start: Int, val end: Int, val location: String)
@@ -188,7 +214,9 @@ object Scheduler {
         days: Int,
         nowMillis: Long = System.currentTimeMillis(),
         wakeStart: Int = WAKE_START,
-        wakeEnd: Int = WAKE_END
+        wakeEnd: Int = WAKE_END,
+        order: TaskOrder = TaskOrder.OLDEST,
+        grouping: Grouping = Grouping.FREE
     ): List<PlacedEvent> {
         val d0 = days.coerceIn(1, 30)
         val now = Calendar.getInstance().apply { timeInMillis = nowMillis }
@@ -241,10 +269,13 @@ object Scheduler {
         }
 
         val out = ArrayList<PlacedEvent>()
+        val state = PlacementState()
         for (i in 0 until d0) {
             val dayStr = dayStrs[i]
             val dayMid = (todayMid.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, i) }
             slots.forEach { it.consumedToday = 0 }
+            state.parentsToday.clear()
+            state.lastParent = null
             val examMode = exams.any { it.startDate <= dayStr && dayStr <= it.endDate }
 
             for (iv in freeByDay[i]) {
@@ -253,7 +284,7 @@ object Scheduler {
                     val remaining = iv.end - cursor
                     val picked = pick(
                         iv.location, remaining, dayMid.timeInMillis, dayStr, cursor,
-                        pool, slots, examMode, engine
+                        pool, slots, examMode, engine, order, grouping, state
                     ) ?: break
                     val chunk = minOf(remaining, picked.chunk)
                     out.add(
@@ -279,6 +310,44 @@ object Scheduler {
         val chunk: Int, val onPlace: (Int) -> Unit
     )
 
+    /** その日に置いた塊。まとめる・散らすの判定に使う */
+    class PlacementState {
+        /** 直前に置いたタスクの塊 */
+        var lastParent: Long? = null
+        /** 今日すでに置いた塊 */
+        val parentsToday = HashSet<Long>()
+    }
+
+    /**
+     * 塊の都合による順位。**大きいほど先に置く。**
+     *
+     * まとめる: 直前と同じ塊 > 今日すでに置いた塊 > それ以外。
+     * 散らす: 今日まだ置いていない塊 > それ以外 > 直前と同じ塊。塊に入っていないタスクは散らす時だけ上げる。
+     */
+    fun hobbyRank(t: HobbyRow, grouping: Grouping, state: PlacementState): Int {
+        val p = t.parentId ?: return if (grouping == Grouping.SPREAD) 2 else 1
+        return when (grouping) {
+            Grouping.CLUSTER -> when {
+                state.lastParent == p -> 3
+                p in state.parentsToday -> 2
+                else -> 1
+            }
+            Grouping.SPREAD -> when {
+                state.lastParent == p -> 0
+                p !in state.parentsToday -> 2
+                else -> 1
+            }
+            Grouping.FREE -> 1
+        }
+    }
+
+    /** 塊の順位が同じ時の並び */
+    private fun hobbyOrder(order: TaskOrder): Comparator<HobbyRow> = when (order) {
+        TaskOrder.OLDEST -> compareBy<HobbyRow>({ it.createdAt }, { it.id })
+        TaskOrder.NEWEST -> compareByDescending<HobbyRow> { it.createdAt }.thenByDescending { it.id }
+        TaskOrder.PRIORITY -> compareByDescending<HobbyRow> { it.priority }.thenBy { it.id }
+    }
+
     /**
      * 教材をその日に置いてよいか。前提条件と周の間隔を見る。
      * 締切が迫っている時は間隔を守れないので無視する（守れないことは計画側に出る）。
@@ -303,22 +372,27 @@ object Scheduler {
     private fun pick(
         location: String, remaining: Int, dayMs: Long, dayStr: String, startMin: Int,
         pool: MutableList<Pair<HobbyRow, Boolean>>, slots: List<MatSlot>,
-        examMode: Boolean, engine: StudyEngine
+        examMode: Boolean, engine: StudyEngine,
+        order: TaskOrder = TaskOrder.OLDEST, grouping: Grouping = Grouping.FREE,
+        state: PlacementState = PlacementState()
     ): Picked? {
-        // 1) 単発タスクを最優先（テスト期間中は出さない）
+        // 1) 単発タスクを最優先（テスト期間中は出さない）。
+        //    塊の都合（まとめる・散らす）を先に見て、同じなら決めた順（古い順など）
         if (!examMode) {
-            var bestIdx = -1
-            for (i in pool.indices) {
+            val byOrder = hobbyOrder(order)
+            val bestIdx = pool.indices.filter { i ->
                 val (t, placed) = pool[i]
-                if (placed) continue
-                if (!locMatch(t.location, location)) continue
-                if (t.durationMinutes > remaining) continue
-                if (bestIdx < 0 || t.priority > pool[bestIdx].first.priority) bestIdx = i
-            }
+                !placed && locMatch(t.location, location) && t.durationMinutes <= remaining
+            }.minWithOrNull(
+                compareByDescending<Int> { hobbyRank(pool[it].first, grouping, state) }
+                    .thenComparing({ pool[it].first }, byOrder)
+            ) ?: -1
             if (bestIdx >= 0) {
                 val t = pool[bestIdx].first
                 return Picked(t.name, "hobby", t.id, null, t.durationMinutes) {
                     pool[bestIdx] = t to true
+                    t.parentId?.let { state.parentsToday.add(it) }
+                    state.lastParent = t.parentId
                 }
             }
         }
@@ -346,6 +420,7 @@ object Scheduler {
         val label = if (bm.st.plannedRounds > 1) "${bm.row.name} ${bm.st.round}周目 ${n}問"
                     else "${bm.row.name} ${n}問"
         return Picked(label, "study", null, bm.row.id, chunk) { c ->
+            state.lastParent = null   // 間に勉強が挟まったら「続けて」ではなくなる
             bm.consumedToday += c
             // 同じ日に同じ教材を出しすぎないよう、見込みぶんを進めておく
             val est = engine.problemsForMinutes(bm.row, bm.st, c)

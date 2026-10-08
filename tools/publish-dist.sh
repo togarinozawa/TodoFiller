@@ -38,9 +38,10 @@ if [[ "$mode" == "beta" ]]; then
   [[ -n "$notes" ]] || die "更新内容を書いてください"
   [[ -f "$APK" ]] || die "APKがありません。先に ./gradlew assembleRelease"
   # 鍵を取り違えると、端末には「アプリがインストールされていません」としか出ない
-  sha="$("$BT/apksigner" verify --print-certs "$APK" | sed -n 's/.*SHA-256 digest: //p' | head -1)"
+  sha="$("$BT/apksigner" verify --print-certs "$APK" | sed -n 's/.*SHA-256 digest: //p' | awk 'NR==1')"
   [[ "$sha" == "$RELEASE_SHA256" ]] || die "リリース鍵で署名されていません（$sha）"
-  badging="$("$BT/aapt2" dump badging "$APK" | head -1)"
+  # head で切ると aapt2 が書き込み先を失って失敗扱いになり、pipefail で黙って止まる。awk で最後まで読ませる
+  badging="$("$BT/aapt2" dump badging "$APK" | awk 'NR==1')"
   code="$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" <<<"$badging")"
   name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$badging")"
   for j in version.json version-beta.json; do

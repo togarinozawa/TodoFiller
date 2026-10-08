@@ -37,6 +37,7 @@ class HobbyFragment : Fragment() {
     private lateinit var tabs: com.google.android.material.tabs.TabLayout
     private lateinit var subTabs: com.google.android.material.tabs.TabLayout
     private lateinit var statsText: TextView
+    private lateinit var pointPop: TextView
     private lateinit var touchHelper: ItemTouchHelper
 
     /** タブを差し替えている最中か。差し替え中の選択通知で二重描画しないため */
@@ -63,6 +64,7 @@ class HobbyFragment : Fragment() {
         tabs = root.findViewById(R.id.taskTabs)
         subTabs = root.findViewById(R.id.taskSubTabs)
         statsText = root.findViewById(R.id.statsText)
+        pointPop = root.findViewById(R.id.pointPop)
         val recycler = root.findViewById<RecyclerView>(R.id.recycler)
         val addButton = root.findViewById<Button>(R.id.addTaskButton)
 
@@ -71,7 +73,8 @@ class HobbyFragment : Fragment() {
             onAddChild = { item -> openAddChild(item) },
             onDelete = { item -> confirmDelete(item) },
             onEdit = { item -> openEdit(item) },
-            onCollapse = { item -> toggleCollapse(item) }
+            onCollapse = { item -> toggleCollapse(item) },
+            onSplit = { item -> splitTask(item) }
         )
         recycler.layoutManager = LinearLayoutManager(requireContext())
         recycler.adapter = adapter
@@ -190,7 +193,8 @@ class HobbyFragment : Fragment() {
             tabSource = TabSource.from(Prefs.taskTabSource(ctx)),
             tagFilterCount = Prefs.tagFilter(ctx).size,
             hideGrouped = Prefs.taskAllHidesGrouped(ctx),
-            statsLabel = if (Prefs.taskShowStats(ctx)) statsSpan(ctx).label else "出さない"
+            statsLabel = if (Prefs.taskShowStats(ctx)) statsSpan(ctx).label else "出さない",
+            groupsLast = Prefs.taskGroupsLast(ctx)
         )
         ViewMenuDialog.show(ctx, rows) { action ->
             when (action) {
@@ -201,6 +205,8 @@ class HobbyFragment : Fragment() {
                 ViewMenuAction.TabOrder -> { showTabOrder(subRow = false); return@show }
                 ViewMenuAction.HideGrouped ->
                     Prefs.setTaskAllHidesGrouped(ctx, !Prefs.taskAllHidesGrouped(ctx))
+                ViewMenuAction.GroupsLast ->
+                    Prefs.setTaskGroupsLast(ctx, !Prefs.taskGroupsLast(ctx))
                 ViewMenuAction.StatsSpan -> { showStatsSpan(); return@show }
                 ViewMenuAction.CollapseAll -> Prefs.setCollapsed(ctx, allParentIds())
                 ViewMenuAction.ExpandAll -> Prefs.setCollapsed(ctx, emptySet())
@@ -302,6 +308,7 @@ class HobbyFragment : Fragment() {
                 statRowsCache = stats
                 rebuildTabs()
                 render()
+                celebrateIfReached(stats)
             },
             onError = { e ->
                 if (!isAdded) return@async
@@ -411,7 +418,9 @@ class HobbyFragment : Fragment() {
         val visible = Tags.filterTree(inTab, filter)
         renderStats(ctx)
         val mode = doneMode()
-        val rows = TaskList.build(visible, sortMode(), Prefs.collapsed(ctx), mode)
+        // グループを下に回すのは「すべて」だけ。塊のタブの中は中身そのものが一つのグループなので
+        val rows = TaskList.build(visible, sortMode(), Prefs.collapsed(ctx), mode,
+            groupsLast = Prefs.taskGroupsLast(ctx) && tabKey == TaskTabs.ALL)
         adapter.places = dev.togar.dynasched.Places.all(ctx)
         adapter.submit(rows)
         empty.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
@@ -627,6 +636,15 @@ class HobbyFragment : Fragment() {
         val newPriority = if (sort == TaskSort.PRIORITY)
             TaskList.priorityAfterMove(rows, moved.id, dropIndex) else null
 
+        // グループを下に回している時は、グループを単独タスクの上に置いても下に戻る。黙って戻ると壊れたように見える
+        if (Prefs.taskGroupsLast(requireContext()) && currentTab() == TaskTabs.ALL) {
+            val groups = loaded.mapNotNullTo(HashSet()) { it.parentId }
+            if (drop.siblingIds.map { it in groups }.zipWithNext().any { (a, b) -> a && !b }) {
+                Toast.makeText(requireContext(), "グループは下にまとまります（「並び順」で解除できます）",
+                    Toast.LENGTH_SHORT).show()
+            }
+        }
+
         if (sort != TaskSort.MANUAL && sort != TaskSort.PRIORITY) {
             Prefs.setTaskSort(requireContext(), TaskSort.MANUAL.name)
             updateSortLabel()
@@ -664,15 +682,81 @@ class HobbyFragment : Fragment() {
 
     private fun toggle(item: HobbyItem, checked: Boolean) {
         val ctx = requireContext().applicationContext
+        // 付けた手応えを指に返す
+        if (checked) view?.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
         Api.async(
             work = { Repo.current(ctx).setHobbyCompleted(ctx, item.id, checked) },
-            onSuccess = { if (isAdded) load() },
+            onSuccess = { awards ->
+                dev.togar.dynasched.widget.SuggestWidgetProvider.updateAll(ctx)
+                if (!isAdded) return@async
+                showPoints(awards)
+                load()
+            },
             onError = { e ->
                 if (!isAdded) return@async
                 Toast.makeText(requireContext(), "更新に失敗: ${Api.friendlyMessage(e)}", Toast.LENGTH_LONG).show()
                 load()
             }
         )
+    }
+
+    /**
+     * 入ったオヤスギを一瞬だけ浮かせて見せる。動きを切っていればトーストで済ませる。
+     * まとまり（親）を片付けた時は手にも返す。
+     */
+    private fun showPoints(awards: List<Award>) {
+        val text = Oyasugi.popText(awards)
+        if (text.isEmpty()) return
+        if (!Prefs.animations(requireContext())) {
+            Toast.makeText(requireContext(), text, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (awards.any { it.isGroup }) view?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        pointPop.animate().cancel()
+        pointPop.text = text
+        pointPop.alpha = 1f
+        pointPop.translationY = 0f
+        pointPop.visibility = View.VISIBLE
+        pointPop.animate()
+            .translationY(-40 * resources.displayMetrics.density)
+            .alpha(0f)
+            .setDuration(900)
+            .withEndAction { pointPop.visibility = View.GONE }
+            .start()
+    }
+
+    /** 今日の目標に届いたら1日1回だけ知らせる */
+    private fun celebrateIfReached(stats: List<StatRow>) {
+        val ctx = requireContext()
+        val today = java.time.LocalDate.now()
+        val p = Stats.today(stats, today, ProgressPanel.goalOf(ctx, stats, today))
+        if (!p.reached) return
+        if (Prefs.goalCelebratedOn(ctx) == today.toString()) return
+        Prefs.setGoalCelebratedOn(ctx, today.toString())
+        view?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        Toast.makeText(ctx, "今日の目標 ${p.goal}件に届きました", Toast.LENGTH_SHORT).show()
+    }
+
+    /** 大きいタスクを子タスクに分ける。子は親の場所・優先度・色・タグを引き継ぐ */
+    private fun splitTask(item: HobbyItem) {
+        val ctx = requireContext()
+        SplitDialog.show(ctx, item) { parts ->
+            val app = ctx.applicationContext
+            Api.async({
+                val repo = Repo.current(app)
+                for (p in parts) {
+                    repo.addHobby(app, p.name, item.id, p.minutes, item.priority, item.location, "",
+                        item.color, item.tags)
+                }
+            }, {
+                if (!isAdded) return@async
+                Toast.makeText(requireContext(), "${parts.size}件に分けました", Toast.LENGTH_SHORT).show()
+                load()
+            }, { e ->
+                if (isAdded) Toast.makeText(requireContext(), "分けられませんでした: ${Api.friendlyMessage(e)}",
+                    Toast.LENGTH_LONG).show()
+            })
+        }
     }
 
     /** 単発タスクをタップしたときの編集ダイアログ（名前・必要時間・場所・優先度・色・メモ） */

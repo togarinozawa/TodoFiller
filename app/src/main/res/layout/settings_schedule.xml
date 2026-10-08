@@ -46,6 +46,44 @@
         android:text="スケジューラを実行（空き時間を埋める）"
         android:textColor="@color/white" />
 
+    <!-- 置き方の好み。v41〜v46で足したもの -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="置き方"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="12sp" />
+
+    <Button
+        android:id="@+id/taskOrderButton"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="単発タスクを置く順番"
+        android:textColor="@color/primary" />
+
+    <Button
+        android:id="@+id/groupingButton"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="同じグループの子タスク"
+        android:textColor="@color/primary" />
+
+    <!-- カレンダー画面で枠を作った時に効く。枠が無ければカレンダーの印の枠を使う -->
+    <CheckBox
+        android:id="@+id/avoidBusyCheck"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:buttonTint="@color/primary"
+        android:text="Googleカレンダーに予定がある時間は空けておく"
+        android:textColor="@color/on_bg"
+        android:textSize="13sp" />
+
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

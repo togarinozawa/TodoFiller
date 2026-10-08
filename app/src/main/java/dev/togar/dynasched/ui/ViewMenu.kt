@@ -44,6 +44,7 @@ sealed class ViewMenuAction {
     object TabSource : ViewMenuAction()
     object TabOrder : ViewMenuAction()
     object HideGrouped : ViewMenuAction()
+    object GroupsLast : ViewMenuAction()
     object StatsSpan : ViewMenuAction()
     object CollapseAll : ViewMenuAction()
     object ExpandAll : ViewMenuAction()
@@ -68,7 +69,8 @@ object ViewMenu {
         tabSource: TabSource,
         tagFilterCount: Int,
         hideGrouped: Boolean = false,
-        statsLabel: String = ""
+        statsLabel: String = "",
+        groupsLast: Boolean = false
     ): List<ViewMenuRow> {
         val rows = ArrayList<ViewMenuRow>()
 
@@ -106,8 +108,14 @@ object ViewMenu {
 
         rows.add(
             ViewMenuRow.Action(
-                ViewMenuAction.HideGrouped, "「すべて」から塊を外す",
+                ViewMenuAction.HideGrouped, "「すべて」からグループを外す",
                 value = if (hideGrouped) "外す" else "出す"
+            )
+        )
+        rows.add(
+            ViewMenuRow.Action(
+                ViewMenuAction.GroupsLast, "「すべて」でグループを下に回す",
+                value = if (groupsLast) "下に回す" else "そのまま"
             )
         )
 

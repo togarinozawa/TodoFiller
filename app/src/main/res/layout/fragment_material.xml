@@ -20,7 +20,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="教材"
+            android:text="予定"
             android:textColor="@color/on_bg"
             android:textSize="20sp"
             android:textStyle="bold" />
@@ -79,7 +79,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center"
-                    android:text="教材はありません"
+                    android:text="予定がありません"
                     android:textColor="@color/on_bg_dim"
                     android:textSize="15sp"
                     android:visibility="gone" />

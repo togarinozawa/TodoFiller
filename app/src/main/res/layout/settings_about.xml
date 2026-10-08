@@ -34,4 +34,14 @@
         android:textColor="@color/on_bg_dim"
         android:textSize="12sp" />
 
+    <CheckBox
+        android:id="@+id/animationCheck"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:buttonTint="@color/primary"
+        android:text="片付けた時に数字を動かす（＋オヤスギの表示）"
+        android:textColor="@color/on_bg"
+        android:textSize="13sp" />
+
 </LinearLayout>

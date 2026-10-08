@@ -71,6 +71,7 @@ class ViewMenuTest {
         assertEquals(
             listOf(
                 ViewMenuAction.TagFilter, ViewMenuAction.TabSource, ViewMenuAction.HideGrouped,
+                ViewMenuAction.GroupsLast,
                 ViewMenuAction.StatsSpan, ViewMenuAction.CollapseAll, ViewMenuAction.ExpandAll
             ),
             actions.map { it.action }

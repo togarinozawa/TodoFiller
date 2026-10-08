@@ -116,6 +116,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- ウィジェット1枚ごとの設定。置いた時と、ウィジェットの⚙から開く -->
+        <activity
+            android:name=".widget.WidgetConfigActivity"
+            android:exported="true"
+            android:label="ウィジェットの設定">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <!-- ホーム画面ウィジェット：空き時間のタスク提案 -->
         <receiver
             android:name=".widget.SuggestWidgetProvider"

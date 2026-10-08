@@ -27,7 +27,9 @@ class HobbyAdapter(
     private val onAddChild: (HobbyItem) -> Unit,
     private val onDelete: (HobbyItem) -> Unit,
     private val onEdit: (HobbyItem) -> Unit,
-    private val onCollapse: (HobbyItem) -> Unit
+    private val onCollapse: (HobbyItem) -> Unit,
+    /** 止まっていそうなタスクの「分ける」 */
+    private val onSplit: (HobbyItem) -> Unit = {}
 ) : RecyclerView.Adapter<HobbyAdapter.VH>() {
 
     private val rows = ArrayList<TaskRow>()
@@ -70,6 +72,7 @@ class HobbyAdapter(
         val title: TextView = view.findViewById(R.id.taskTitle)
         val sub: TextView = view.findViewById(R.id.taskSub)
         val priority: TextView = view.findViewById(R.id.priorityChip)
+        val split: TextView = view.findViewById(R.id.splitChip)
         val textContainer: View = title.parent as View
         val addChild: Button = view.findViewById(R.id.addChildButton)
         val delete: Button = view.findViewById(R.id.deleteButton)
@@ -123,6 +126,12 @@ class HobbyAdapter(
         } else {
             holder.title.setCompoundDrawablesRelative(null, null, null, null)
         }
+
+        // 長い・古いタスクには「分ける」を出す。掴んでいる間は出さない（指が当たる）
+        val stuck = !row.hasChildren && item.id != draggingId &&
+            Stuck.isStuck(item, row.hasChildren, java.time.LocalDate.now())
+        holder.split.visibility = if (stuck) View.VISIBLE else View.GONE
+        holder.split.setOnClickListener(if (stuck) View.OnClickListener { onSplit(item) } else null)
 
         // 優先度。葉タスクだけ。親は配下がばらばらなので、まとめて出しても嘘になる
         if (row.hasChildren) {

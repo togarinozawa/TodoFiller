@@ -153,7 +153,7 @@ object UpdateChecker {
 
                 main.post {
                     if (!activity.isFinishing) dialog.dismiss()
-                    launchInstall(activity, apk)
+                    launchInstall(activity, apk, info.url)
                 }
             } catch (e: Exception) {
                 main.post {
@@ -251,28 +251,35 @@ object UpdateChecker {
         }
     }
 
-    private fun warnDifferentKey(activity: AppCompatActivity, apk: File) {
+    /** 落とし先のURLを見せてコピーできるようにする。ブラウザで開いて入れ直す時に要る */
+    private fun warnDifferentKey(activity: AppCompatActivity, apk: File, url: String) {
         AlertDialog.Builder(activity)
             .setTitle("このまま上書きはできません")
-            .setMessage(
+            .setMessage(dev.togar.dynasched.ui.Emphasis.render(
                 "新しいAPKは**別の鍵で署名**されています。\n" +
                     "Androidは署名の違うアプリの上書きを拒むので、このまま進めても" +
                     "「アプリがインストールされていません」と出るだけです。\n\n" +
                     "入れ替えるには:\n" +
                     "1. 設定 → バックアップを書き出す\n" +
                     "2. このアプリをアンインストール\n" +
-                    "3. GitHubの dist ブランチから skimas.apk を落として入れる\n" +
+                    "3. 下のURLをブラウザで開いて落とし、入れる\n" +
                     "4. 起動 → 設定 → バックアップから復元\n\n" +
-                    "**先にバックアップを取ってください。アンインストールで端末内のデータは消えます。**"
-            )
+                    "**先にバックアップを取ってください。アンインストールで端末内のデータは消えます。**\n\n" +
+                    url
+            ))
             .setPositiveButton("わかった", null)
+            .setNeutralButton("URLをコピー") { _, _ ->
+                activity.getSystemService(android.content.ClipboardManager::class.java)
+                    ?.setPrimaryClip(android.content.ClipData.newPlainText("スキマスのAPK", url))
+                Toast(activity, "URLをコピーしました")
+            }
             .setNegativeButton("それでも進む") { _, _ -> startInstaller(activity, apk) }
             .show()
     }
 
-    private fun launchInstall(activity: AppCompatActivity, apk: File) {
+    private fun launchInstall(activity: AppCompatActivity, apk: File, url: String) {
         if (!sameSigningKey(activity, apk)) {
-            warnDifferentKey(activity, apk)
+            warnDifferentKey(activity, apk, url)
             return
         }
         startInstaller(activity, apk)

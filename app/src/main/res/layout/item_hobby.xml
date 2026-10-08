@@ -54,6 +54,22 @@
             android:visibility="gone" />
     </LinearLayout>
 
+    <!-- 止まっていそうなタスク（長い・古い）にだけ出す。押すと子タスクに分ける -->
+    <TextView
+        android:id="@+id/splitChip"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="6dp"
+        android:background="?attr/selectableItemBackground"
+        android:paddingStart="6dp"
+        android:paddingTop="2dp"
+        android:paddingEnd="6dp"
+        android:paddingBottom="2dp"
+        android:text="分ける"
+        android:textColor="@color/accent_goal"
+        android:textSize="11sp"
+        android:visibility="gone" />
+
     <!-- 優先度。数字だけだと目が滑るので、帯の色で高い低いを先に伝える -->
     <TextView
         android:id="@+id/priorityChip"

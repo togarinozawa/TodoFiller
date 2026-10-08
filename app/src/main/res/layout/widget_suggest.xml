@@ -1,137 +1,180 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/widgetRoot"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
     android:orientation="vertical"
+    android:id="@+id/widgetRoot"
     android:background="@drawable/widget_bg"
-    android:padding="12dp">
-
+    android:padding="12dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:gravity="center_vertical">
-
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
         <TextView
+            android:textSize="12sp"
+            android:textColor="@color/on_bg_dim"
+            android:ellipsize="end"
             android:id="@+id/widgetTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:text="いまできること（家）"
-            android:textColor="@color/on_bg"
-            android:textSize="13sp"
-            android:textStyle="bold" />
-
-        <!-- タスクを足す。思いついた時にアプリを開かずに済ませるための入口 -->
+            android:maxLines="1"
+            android:layout_weight="1"/>
         <TextView
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/primary"
             android:id="@+id/widgetAdd"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="＋"
-            android:textColor="@color/primary"
-            android:textSize="18sp"
-            android:textStyle="bold"
             android:paddingStart="8dp"
-            android:paddingEnd="8dp" />
-
+            android:paddingEnd="8dp"/>
         <TextView
-            android:id="@+id/widgetFree"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="暇"
-            android:textColor="@color/primary"
             android:textSize="12sp"
             android:textStyle="bold"
-            android:padding="4dp" />
-
-        <TextView
-            android:id="@+id/widgetLocToggle"
+            android:textColor="@color/primary"
+            android:id="@+id/widgetFree"
+            android:padding="4dp"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="家⇔外"
-            android:textColor="@color/primary"
-            android:textSize="12sp"
-            android:padding="4dp" />
-
+            android:text="暇"/>
         <TextView
+            android:textSize="12sp"
+            android:textColor="@color/primary"
+            android:id="@+id/widgetLocToggle"
+            android:padding="4dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="家⇔外"/>
+        <TextView
+            android:textSize="16sp"
+            android:textColor="@color/primary"
             android:id="@+id/widgetRefresh"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="↻"
-            android:textColor="@color/primary"
-            android:textSize="16sp"
             android:paddingStart="8dp"
-            android:paddingEnd="4dp" />
+            android:paddingEnd="4dp"/>
+        <TextView
+            android:textSize="15sp"
+            android:textColor="@color/primary"
+            android:id="@+id/widgetConfig"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⚙"
+            android:paddingStart="6dp"
+            android:paddingEnd="2dp"/>
     </LinearLayout>
-
+    <LinearLayout
+        android:orientation="vertical"
+        android:id="@+id/widgetProgress"
+        android:paddingTop="6dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+        <LinearLayout
+            android:gravity="bottom"
+            android:orientation="horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <ImageView
+                android:id="@+id/widgetRing"
+                android:visibility="gone"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:adjustViewBounds="true"
+                android:contentDescription="今日の進み具合"/>
+            <TextView
+                android:textSize="40sp"
+                android:textStyle="bold"
+                android:textColor="@color/primary"
+                android:id="@+id/widgetBigNumber"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:includeFontPadding="false"/>
+            <TextView
+                android:textSize="13sp"
+                android:textColor="@color/on_bg"
+                android:ellipsize="end"
+                android:id="@+id/widgetBigLabel"
+                android:paddingBottom="6dp"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:text="件 片付けた"
+                android:maxLines="1"
+                android:layout_weight="1"
+                android:paddingStart="6dp"/>
+            <TextView
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="@color/accent_goal"
+                android:id="@+id/widgetStreak"
+                android:paddingBottom="6dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""/>
+        </LinearLayout>
+        <ProgressBar
+            android:id="@+id/widgetGoalBar"
+            android:layout_width="match_parent"
+            android:layout_height="6dp"
+            android:layout_marginTop="6dp"
+            android:max="100"
+            android:progress="0"
+            android:progressTint="@color/primary"
+            android:progressBackgroundTint="@color/surface_variant"
+            style="?android:attr/progressBarStyleHorizontal"/>
+        <ImageView
+            android:id="@+id/widgetChain"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:adjustViewBounds="true"
+            android:contentDescription="直近4週間の記録"/>
+    </LinearLayout>
+    <ImageView
+        android:background="@color/surface_variant"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="6dp"
+        android:contentDescription="@null"/>
     <TextView
+        android:textSize="13sp"
+        android:textColor="@color/on_bg"
+        android:ellipsize="end"
         android:id="@+id/widgetLine1"
+        android:paddingTop="2dp"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="@color/on_bg"
-        android:textSize="13sp"
-        android:maxLines="1"
-        android:ellipsize="end"
-        android:paddingTop="6dp" />
-
+        android:maxLines="1"/>
     <TextView
+        android:textSize="13sp"
+        android:textColor="@color/on_bg"
+        android:ellipsize="end"
         android:id="@+id/widgetLine2"
+        android:paddingTop="4dp"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="@color/on_bg"
-        android:textSize="13sp"
-        android:maxLines="1"
-        android:ellipsize="end"
-        android:paddingTop="4dp" />
-
+        android:maxLines="1"/>
     <TextView
+        android:textSize="13sp"
+        android:textColor="@color/on_bg"
+        android:ellipsize="end"
         android:id="@+id/widgetLine3"
+        android:paddingTop="4dp"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="@color/on_bg"
-        android:textSize="13sp"
-        android:maxLines="1"
-        android:ellipsize="end"
-        android:paddingTop="4dp" />
-
+        android:maxLines="1"/>
     <TextView
-        android:id="@+id/widgetLine4"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="@color/on_bg"
-        android:textSize="13sp"
-        android:maxLines="1"
-        android:ellipsize="end"
-        android:paddingTop="4dp" />
-
-    <TextView
-        android:id="@+id/widgetLine5"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="@color/on_bg"
-        android:textSize="13sp"
-        android:maxLines="1"
-        android:ellipsize="end"
-        android:paddingTop="4dp" />
-
-    <TextView
-        android:id="@+id/widgetLine6"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="@color/on_bg"
-        android:textSize="13sp"
-        android:maxLines="1"
-        android:ellipsize="end"
-        android:paddingTop="4dp" />
-
-    <TextView
-        android:id="@+id/widgetStatus"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="@color/on_bg_dim"
         android:textSize="11sp"
-        android:maxLines="1"
+        android:textColor="@color/on_bg_dim"
         android:ellipsize="end"
-        android:paddingTop="6dp" />
+        android:id="@+id/widgetStatus"
+        android:paddingTop="6dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxLines="1"/>
 </LinearLayout>

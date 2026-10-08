@@ -20,7 +20,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="単発タスク"
+            android:text="タスク"
             android:textColor="@color/on_bg"
             android:textSize="20sp"
             android:textStyle="bold" />
@@ -123,6 +123,25 @@
                 android:text="タスクはありません"
                 android:textColor="@color/on_bg_dim"
                 android:textSize="15sp"
+                android:visibility="gone" />
+
+            <!-- 片付けた時に一瞬出す「+2 オヤスギ」。上へ浮いて消える -->
+            <TextView
+                android:id="@+id/pointPop"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|center_horizontal"
+                android:layout_marginTop="24dp"
+                android:background="@color/surface"
+                android:elevation="10dp"
+                android:paddingStart="16dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="8dp"
+                android:text=""
+                android:textColor="@color/accent_goal"
+                android:textSize="18sp"
+                android:textStyle="bold"
                 android:visibility="gone" />
 
             <!-- 掴んでいる間だけ出す「いま何段目か」の表示。

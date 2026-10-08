@@ -77,11 +77,13 @@ object TaskList {
         all: List<HobbyItem>,
         sort: TaskSort,
         collapsed: Set<Long>,
-        doneMode: DoneMode
+        doneMode: DoneMode,
+        /** 子を持つタスク（グループ）を、同じ段の単独のタスクより下に回す */
+        groupsLast: Boolean = false
     ): List<TaskRow> {
         val source = if (doneMode == DoneMode.HIDDEN) withoutDone(all) else all
         val doneAtBottom = doneMode == DoneMode.BOTTOM
-        return buildTree(source, sort, collapsed, doneAtBottom)
+        return buildTree(source, sort, collapsed, doneAtBottom, groupsLast)
     }
 
     /**
@@ -120,15 +122,18 @@ object TaskList {
         all: List<HobbyItem>,
         sort: TaskSort,
         collapsed: Set<Long>,
-        doneAtBottom: Boolean
+        doneAtBottom: Boolean,
+        groupsLast: Boolean = false
     ): List<TaskRow> {
         val byParent = all.groupBy { it.parentId }
+        val order = comparator(sort, doneAtBottom,
+            if (groupsLast) { i -> byParent.containsKey(i.id) } else { _ -> false })
         val existing = all.mapTo(HashSet()) { it.id }
         val out = ArrayList<TaskRow>(all.size)
         val visited = HashSet<Long>()
 
         fun childrenOf(id: Long?): List<HobbyItem> =
-            byParent[id].orEmpty().sortedWith(comparator(sort, doneAtBottom))
+            byParent[id].orEmpty().sortedWith(order)
 
         /** 配下の葉を数える（自分が葉なら自分を数える） */
         fun leaves(item: HobbyItem, seen: MutableSet<Long>): Triple<Int, Int, Int> {
@@ -167,7 +172,7 @@ object TaskList {
 
         // ルート＝parent_id が null、または親が消えている孤児
         val roots = all.filter { it.parentId == null || !existing.contains(it.parentId) }
-            .sortedWith(comparator(sort, doneAtBottom))
+            .sortedWith(order)
         for (r in roots) emit(r, 0)
         return out
     }
@@ -178,7 +183,14 @@ object TaskList {
      * 完了を下へ寄せる指定があるときは、**どの並び順よりも先に**効かせる。
      * そうしないと「済んだものが優先度順の途中に居座る」ことになる。
      */
-    fun comparator(sort: TaskSort, doneAtBottom: Boolean): Comparator<HobbyItem> {
+    /**
+     * @param isGroup グループかどうか。グループを下に回す時だけ渡す。
+     *   済んだ物を下へ回す方が先に効く（済んだ単独タスクがグループより上に残らないように）
+     */
+    fun comparator(
+        sort: TaskSort, doneAtBottom: Boolean,
+        isGroup: (HobbyItem) -> Boolean = { false }
+    ): Comparator<HobbyItem> {
         val inner = when (sort) {
             TaskSort.MANUAL -> compareBy<HobbyItem>({ it.sortOrder }, { it.id })
             TaskSort.NEWEST -> compareByDescending { it.id }          // idは採番順＝追加順
@@ -188,7 +200,8 @@ object TaskList {
             TaskSort.LONGEST -> compareBy<HobbyItem> { -it.durationMinutes }.thenBy { it.id }
             TaskSort.SHORTEST -> compareBy<HobbyItem>({ it.durationMinutes }, { it.id })
         }
-        return if (doneAtBottom) compareBy<HobbyItem> { it.isCompleted }.then(inner) else inner
+        val withGroups = compareBy<HobbyItem> { isGroup(it) }.then(inner)
+        return if (doneAtBottom) compareBy<HobbyItem> { it.isCompleted }.then(withGroups) else withGroups
     }
 
     /**

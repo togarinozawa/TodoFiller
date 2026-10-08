@@ -22,9 +22,12 @@ import dev.togar.dynasched.R
  */
 class HelpActivity : AppCompatActivity() {
 
+    private var pages: List<HelpPage> = emptyList()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_help)
+        pages = Help.pages(Prefs.ownerMode(this))
 
         val pager = findViewById<RecyclerView>(R.id.helpPager)
         val dots = findViewById<TextView>(R.id.helpDots)
@@ -37,8 +40,8 @@ class HelpActivity : AppCompatActivity() {
 
         fun refreshDots() {
             val i = lm.findFirstCompletelyVisibleItemPosition().coerceAtLeast(0)
-            dots.text = Help.pages.indices.joinToString(" ") { if (it == i) "●" else "○" }
-            closeBtn.text = if (i == Help.pages.lastIndex) "はじめる" else "閉じる"
+            dots.text = pages.indices.joinToString(" ") { if (it == i) "●" else "○" }
+            closeBtn.text = if (i == pages.lastIndex) "はじめる" else "閉じる"
         }
         pager.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) = refreshDots()
@@ -60,13 +63,13 @@ class HelpActivity : AppCompatActivity() {
             return PageVH(v)
         }
 
-        override fun getItemCount(): Int = Help.pages.size
+        override fun getItemCount(): Int = pages.size
 
         override fun onBindViewHolder(holder: PageVH, position: Int) {
-            val page = Help.pages[position]
+            val page = pages[position]
             holder.title.text = page.title
-            holder.body.text = page.body
-            holder.step.text = "${position + 1} / ${Help.pages.size}"
+            holder.body.text = Emphasis.render(page.body)
+            holder.step.text = "${position + 1} / ${pages.size}"
         }
     }
 

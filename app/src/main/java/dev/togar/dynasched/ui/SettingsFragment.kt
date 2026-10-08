@@ -62,6 +62,7 @@ class SettingsFragment : Fragment() {
             else Entry("Notionと同期", if (Prefs.notionReady(ctx)) "接続済み" else "未接続") {
                 open(NotionSettingsPage())
             },
+            Entry("ウィジェット", "置いたウィジェットごとの設定") { showWidgetList() },
             Entry("バックアップ", "書き出し・復元") { open(BackupSettingsPage()) },
             Entry("使い方", "カレンダーの印の付け方・各画面の説明") {
                 startActivity(Intent(ctx, HelpActivity::class.java))
@@ -71,6 +72,33 @@ class SettingsFragment : Fragment() {
                 open(AboutSettingsPage())
             }
         )
+    }
+
+    /** 置いてあるウィジェットを選んで、その1枚の設定を開く */
+    private fun showWidgetList() {
+        val ctx = requireContext()
+        val ids = dev.togar.dynasched.widget.WidgetPrefs.placedIds(ctx)
+        if (ids.isEmpty()) {
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle("ウィジェットの設定")
+                .setMessage("ホーム画面にまだ置かれていません。\n\nホーム画面を長押し →「ウィジェット」→「スキマス」から置けます。" +
+                    "何枚でも置けて、枚ごとに場所・空き時間・タグ・見た目を変えられます。")
+                .setPositiveButton("閉じる", null)
+                .show()
+            return
+        }
+        val places = Places.all(ctx)
+        val labels = ids.map { id ->
+            val cfg = dev.togar.dynasched.widget.WidgetPrefs.load(ctx, id)
+            cfg.title.ifBlank { "ウィジェット" } + "\n" + cfg.summary(places)
+        }
+        androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setTitle("どのウィジェットを直しますか")
+            .setItems(labels.toTypedArray()) { _, i ->
+                startActivity(dev.togar.dynasched.widget.WidgetConfigActivity.intent(ctx, ids[i]))
+            }
+            .setNegativeButton("閉じる", null)
+            .show()
     }
 
     /**

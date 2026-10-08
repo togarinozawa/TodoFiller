@@ -1,18 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  既定を大きめ（4×3セル）にしてある。候補が3件しか見えないと、
-  「これしか無いのか」と思って結局アプリを開くことになり、ウィジェットの意味が薄れる。
+  既定を大きめ（4×4セル）にしてある。今日の達成と候補を両方見せるため。
+  置いた時に設定画面（WidgetConfigActivity）を開き、1枚ごとに条件を決められる。
   縮めたい時は resizeMode で小さくできる（minResize まで）。
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
-    android:minHeight="180dp"
+    android:minHeight="240dp"
     android:minResizeWidth="180dp"
-    android:minResizeHeight="110dp"
+    android:minResizeHeight="140dp"
     android:targetCellWidth="4"
-    android:targetCellHeight="3"
+    android:targetCellHeight="4"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_suggest"
+    android:configure="dev.togar.dynasched.widget.WidgetConfigActivity"
     android:resizeMode="horizontal|vertical"
     android:description="@string/widget_description"
-    android:widgetCategory="home_screen" />
+    android:widgetCategory="home_screen"
+    android:widgetFeatures="reconfigurable" />

@@ -132,6 +132,49 @@ class ScheduleSettingsPage : SettingsPage("予定の自動配置", R.layout.sett
         root.findViewById<Button>(R.id.calendarCheckButton).setOnClickListener {
             CalendarCheckDialog.show(requireActivity())
         }
+        setupPlacement(root)
+        root.findViewById<android.widget.CheckBox>(R.id.avoidBusyCheck).apply {
+            isChecked = Prefs.avoidBusy(requireContext())
+            setOnCheckedChangeListener { _, on -> Prefs.setAvoidBusy(requireContext(), on) }
+        }
+    }
+
+    /** 単発タスクを置く順番と、同じグループの子タスクをまとめるか散らすか */
+    private fun setupPlacement(root: View) {
+        val ctx = requireContext()
+        val orderBtn = root.findViewById<Button>(R.id.taskOrderButton)
+        val groupBtn = root.findViewById<Button>(R.id.groupingButton)
+        fun refresh() {
+            orderBtn.text = "単発タスクを置く順番: " +
+                dev.togar.dynasched.engine.TaskOrder.from(Prefs.taskOrder(ctx)).label
+            groupBtn.text = "同じグループの子タスク: " +
+                dev.togar.dynasched.engine.Grouping.from(Prefs.grouping(ctx)).label
+        }
+        refresh()
+        orderBtn.setOnClickListener {
+            val all = dev.togar.dynasched.engine.TaskOrder.entries
+            val cur = dev.togar.dynasched.engine.TaskOrder.from(Prefs.taskOrder(ctx))
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle("単発タスクを置く順番")
+                .setItems(all.map { (if (it == cur) "● " else "\u3000") + it.label }.toTypedArray()) { _, i ->
+                    Prefs.setTaskOrder(ctx, all[i].name)
+                    refresh()
+                }
+                .setNegativeButton("閉じる", null)
+                .show()
+        }
+        groupBtn.setOnClickListener {
+            val all = dev.togar.dynasched.engine.Grouping.entries
+            val cur = dev.togar.dynasched.engine.Grouping.from(Prefs.grouping(ctx))
+            androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle("同じグループの子タスク")
+                .setItems(all.map { (if (it == cur) "● " else "\u3000") + it.label }.toTypedArray()) { _, i ->
+                    Prefs.setGrouping(ctx, all[i].name)
+                    refresh()
+                }
+                .setNegativeButton("閉じる", null)
+                .show()
+        }
     }
 
     /**
@@ -475,6 +518,10 @@ class AboutSettingsPage : SettingsPage("アプリについて", R.layout.setting
                 if (on) "本人用モードにしました（Notion同期・テスト版の受け取り）" else "本人用モードを切りました",
                 Toast.LENGTH_LONG).show()
             showVersion()
+        }
+        root.findViewById<android.widget.CheckBox>(R.id.animationCheck).apply {
+            isChecked = Prefs.animations(requireContext())
+            setOnCheckedChangeListener { _, on -> Prefs.setAnimations(requireContext(), on) }
         }
         root.findViewById<Button>(R.id.checkUpdateButton).setOnClickListener {
             Toast.makeText(requireContext(), "更新を確認中…", Toast.LENGTH_SHORT).show()

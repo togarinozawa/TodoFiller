@@ -386,6 +386,12 @@ object TaskTabs {
             if (id == null) all else TaskList.descendantsOf(all, id)
         }
         key.startsWith("t:") -> Tags.filterTree(all, setOf(key.removePrefix("t:")))
+        // 場所のタブの下段（その場所の、ある塊の中だけ）。「p:場所」より先に見る
+        key.startsWith("p:") && key.contains(PLACE_GROUP) -> {
+            val place = key.removePrefix("p:").substringBefore(PLACE_GROUP)
+            val id = key.substringAfter(PLACE_GROUP).toLongOrNull()
+            if (id == null) placeTree(all, place) else placeTree(TaskList.descendantsOf(all, id), place)
+        }
         key.startsWith("p:") -> placeTree(all, key.removePrefix("p:"))
         hideGrouped -> withoutTabbed(all, source)
         else -> all
@@ -423,6 +429,7 @@ object TaskTabs {
      * （降りると、下段のタブが上段と同じだけ増えて意味が無くなる）。
      */
     fun subTabs(all: List<HobbyItem>, key: String): List<TaskTab> {
+        if (key.startsWith("p:") && !key.contains(PLACE_GROUP)) return placeSubTabs(all, key)
         val id = key.removePrefix("g:").toLongOrNull()
         if (!key.startsWith("g:") || id == null) return emptyList()
         val hasChild = all.mapNotNullTo(HashSet()) { it.parentId }
@@ -455,8 +462,40 @@ object TaskTabs {
     }
 
     /** そのタブが指している塊のID。塊タブでなければ null（追加先を決めるのに使う） */
-    fun groupIdOf(key: String): Long? =
-        if (key.startsWith("g:")) key.removePrefix("g:").toLongOrNull() else null
+    fun groupIdOf(key: String): Long? = when {
+        key.startsWith("g:") -> key.removePrefix("g:").toLongOrNull()
+        key.contains(PLACE_GROUP) -> key.substringAfter(PLACE_GROUP).toLongOrNull()
+        else -> null
+    }
+
+    /** 場所のタブの下段のキーで、場所と塊を区切る。「p:home|g:12」 */
+    private const val PLACE_GROUP = "|g:"
+
+    /**
+     * 場所のタブの下段。その場所のタスクを含む塊を、**入れ子も含めて**木の順に並べる。
+     * 深い塊は「親 › 子」と書いて、同じ名前の塊を見分けられるようにする。
+     */
+    private fun placeSubTabs(all: List<HobbyItem>, key: String): List<TaskTab> {
+        val inPlace = placeTree(all, key.removePrefix("p:"))
+        val byParent = inPlace.groupBy { it.parentId }
+        val ids = inPlace.mapTo(HashSet()) { it.id }
+        val byId = inPlace.associateBy { it.id }
+        val order = TaskList.comparator(TaskSort.MANUAL, false)
+        val out = ArrayList<TaskTab>()
+        fun walk(item: HobbyItem, seen: MutableSet<Long>) {
+            if (!seen.add(item.id)) return
+            val kids = byParent[item.id].orEmpty()
+            if (kids.isEmpty()) return
+            val parent = item.parentId?.let { byId[it] }
+            out.add(TaskTab("$key$PLACE_GROUP${item.id}",
+                if (parent != null) "${parent.name} › ${item.name}" else item.name))
+            kids.sortedWith(order).forEach { walk(it, seen) }
+        }
+        val seen = HashSet<Long>()
+        inPlace.filter { it.parentId == null || it.parentId !in ids }.sortedWith(order).forEach { walk(it, seen) }
+        if (out.isEmpty()) return emptyList()
+        return listOf(TaskTab(key, "ぜんぶ")) + out
+    }
 
     /** そのキーのタブがまだ存在するか（グループを消した後などに効く） */
     fun exists(tabs: List<TaskTab>, key: String): Boolean = tabs.any { it.key == key }

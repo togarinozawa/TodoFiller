@@ -289,6 +289,24 @@ class TaskListTest {
     }
 
     @Test
+    fun `場所のタブの下段に、入れ子の塊も並ぶ`() {
+        fun t(id: Long, name: String, parent: Long? = null, loc: String = "home") =
+            HobbyItem(id = id, name = name, parentId = parent, isCompleted = false, location = loc)
+        val items = listOf(
+            t(1, "帰省"), t(2, "部屋", 1), t(3, "机", 2), t(4, "棚", 2),
+            t(5, "庭", 1), t(6, "草取り", 5, loc = "p1"),     // 庭の中身は寮でできる
+            t(7, "買い物", loc = "out")
+        )
+        val subs = TaskTabs.subTabs(items, "p:home")
+        assertEquals(listOf("ぜんぶ", "帰省", "帰省 › 部屋"), subs.map { it.label })
+        // 塊のタブと同じく、塊そのものは出さず中身だけ
+        assertEquals(listOf(3L, 4L), TaskTabs.apply(items, subs[2].key).map { it.id })
+        assertEquals(2L, TaskTabs.groupIdOf(subs[2].key))
+        // 塊の無い場所には下段を出さない
+        assertEquals(emptyList<TaskTab>(), TaskTabs.subTabs(items, "p:out"))
+    }
+
+    @Test
     fun `タブの並びを当てる。先頭は動かさず、新しいタブは後ろ`() {
         val tabs = listOf(TaskTab("", "すべて"), TaskTab("g:1", "仕事"),
             TaskTab("g:2", "家事"), TaskTab("g:3", "趣味"))

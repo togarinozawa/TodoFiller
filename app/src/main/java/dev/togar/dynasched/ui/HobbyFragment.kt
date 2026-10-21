@@ -34,17 +34,22 @@ class HobbyFragment : Fragment() {
     private lateinit var empty: TextView
     private lateinit var dragHintText: TextView
     private lateinit var sortButton: Button
-    private lateinit var tabs: com.google.android.material.tabs.TabLayout
-    private lateinit var subTabs: com.google.android.material.tabs.TabLayout
+    private lateinit var searchInput: android.widget.EditText
+    private lateinit var chips: com.google.android.material.chip.ChipGroup
+    private lateinit var placeFilterText: TextView
+    private lateinit var nowCard: View
+    private lateinit var nowLabel: TextView
+    private lateinit var nowTitle: TextView
     private lateinit var statsText: TextView
     private lateinit var pointPop: TextView
     private lateinit var touchHelper: ItemTouchHelper
 
-    /** タブを差し替えている最中か。差し替え中の選択通知で二重描画しないため */
-    private var rebuildingTabs = false
+    /** 絞り込み。変えるたびに覚える（[Prefs.taskFilter]） */
+    private var filter = TaskFilter()
 
-    /** 下段で選んでいる小グループ。空なら塊ぜんぶ。画面を離れたら忘れてよい */
-    private var subTabKey: String = ""
+    /** 「いまやること」の候補と、いま出している番号。「ほかの」で次へ送る */
+    private var nowCandidates: List<dev.togar.dynasched.api.SuggestItem> = emptyList()
+    private var nowIndex = 0
 
     /** 数えるための控え。**描画のたびにDBを読まない**（メインスレッドが止まる） */
     private var statRowsCache: List<StatRow> = emptyList()
@@ -61,8 +66,12 @@ class HobbyFragment : Fragment() {
         swipe = root.findViewById(R.id.swipeRefresh)
         dragHintText = root.findViewById(R.id.dragHintText)
         sortButton = root.findViewById(R.id.sortButton)
-        tabs = root.findViewById(R.id.taskTabs)
-        subTabs = root.findViewById(R.id.taskSubTabs)
+        searchInput = root.findViewById(R.id.searchInput)
+        chips = root.findViewById(R.id.filterChips)
+        placeFilterText = root.findViewById(R.id.placeFilterText)
+        nowCard = root.findViewById(R.id.nowCard)
+        nowLabel = root.findViewById(R.id.nowLabel)
+        nowTitle = root.findViewById(R.id.nowTitle)
         statsText = root.findViewById(R.id.statsText)
         pointPop = root.findViewById(R.id.pointPop)
         val recycler = root.findViewById<RecyclerView>(R.id.recycler)
@@ -82,44 +91,35 @@ class HobbyFragment : Fragment() {
         touchHelper.attachToRecyclerView(recycler)
 
         addButton.setOnClickListener {
-            // 塊のタブを開いている時は、その中に足す。
-            // 開いている場所と足される場所が違うと、足した物がその場に出てこない
+            // 絞り込んでいる条件で始める。条件と違う物を足すと、足した物がその場に出てこない
             val intent = Intent(requireContext(), AddTaskActivity::class.java)
-            groupOfCurrentTab()?.let { g ->
+            filter.groupId?.let { id -> loaded.firstOrNull { it.id == id } }?.let { g ->
                 intent.putExtra(AddTaskActivity.EXTRA_PARENT_ID, g.id)
                 intent.putExtra(AddTaskActivity.EXTRA_PARENT_NAME, g.name)
             }
-            // 「実家のみ」のタブで足したら、最初から実家のみにしておく
-            currentTab().takeIf { it.startsWith("p:") }?.let {
-                intent.putExtra(AddTaskActivity.EXTRA_LOCATION, it.removePrefix("p:"))
-            }
+            // 場所を1つだけ選んでいれば、最初からその場所にしておく
+            filter.places.singleOrNull()?.let { intent.putExtra(AddTaskActivity.EXTRA_LOCATION, it) }
+            if (filter.habit == TaskFilter.Habit.ONLY) intent.putExtra(AddTaskActivity.EXTRA_REPEAT, true)
             startActivity(intent)
         }
         sortButton.setOnClickListener { showViewMenu() }
 
-        tabs.addOnTabSelectedListener(object : com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
-            override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
-                if (rebuildingTabs) return
-                Prefs.setTaskTab(requireContext(), tab.tag as? String ?: TaskTabs.ALL)
-                subTabKey = ""   // 上段が変われば下段は別物になる
-                rebuildSubTabs()
-                render()
+        filter = Prefs.taskFilter(requireContext())
+        searchInput.setText(filter.text)
+        searchInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            override fun afterTextChanged(e: android.text.Editable?) {
+                val t = e?.toString() ?: ""
+                if (t != filter.text) setFilter(filter.copy(text = t), rebuildChips = false)
             }
-            override fun onTabUnselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
-            override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
         })
-
-        // 引き下ろしはNotionから取り直す合図にもする。
-        // 開いている間にNotion側で書いたものを、閉じずに拾えるように
-        subTabs.addOnTabSelectedListener(object : com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
-            override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
-                if (rebuildingTabs) return
-                subTabKey = tab.tag as? String ?: ""
-                render()
-            }
-            override fun onTabUnselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
-            override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
-        })
+        root.findViewById<Button>(R.id.nowDo).setOnClickListener { doNow() }
+        root.findViewById<Button>(R.id.nowNext).setOnClickListener {
+            if (nowCandidates.isNotEmpty()) { nowIndex = (nowIndex + 1) % nowCandidates.size; renderNow() }
+        }
+        nowLabel.setOnClickListener { pickNowPlace() }
+        placeFilterText.setOnClickListener { confirmPlaceAll() }
 
         swipe.setOnRefreshListener { syncThenLoad() }
         updateSortLabel()
@@ -170,13 +170,10 @@ class HobbyFragment : Fragment() {
     private fun doneMode(): DoneMode = DoneMode.from(Prefs.taskDoneMode(requireContext()))
 
     private fun updateSortLabel() {
-        val filter = Prefs.tagFilter(requireContext())
         // 完了を隠している間はそれを見せる。気付かないまま「終わったものが消えた」と
-        // 思わないように（実際には隠れているだけ）
+        // 思わないように（実際には隠れているだけ）。絞り込みはチップの方に見えている
         val hidden = if (doneMode() == DoneMode.HIDDEN) " 済×" else ""
-        sortButton.text = if (filter.isEmpty()) shortLabel(sortMode()) + hidden
-        // 絞り込み中はそれを最初に見せる。気付かないまま「タスクが消えた」と思うのを防ぐ
-        else "#${filter.first()}${if (filter.size > 1) "+${filter.size - 1}" else ""}$hidden"
+        sortButton.text = shortLabel(sortMode()) + hidden
     }
 
     private fun shortLabel(s: TaskSort) = when (s) {
@@ -194,21 +191,22 @@ class HobbyFragment : Fragment() {
         val rows = ViewMenu.rows(
             sort = sortMode(),
             done = doneMode(),
-            tabSource = TabSource.from(Prefs.taskTabSource(ctx)),
-            tagFilterCount = Prefs.tagFilter(ctx).size,
-            hideGrouped = Prefs.taskAllHidesGrouped(ctx),
             statsLabel = if (Prefs.taskShowStats(ctx)) statsSpan(ctx).label else "出さない",
-            groupsLast = Prefs.taskGroupsLast(ctx)
+            groupsLast = Prefs.taskGroupsLast(ctx),
+            showNow = Prefs.taskShowNow(ctx),
+            filtering = !filter.isEmpty,
+            placeFiltered = Prefs.placeFilter(ctx) != null
         )
         ViewMenuDialog.show(ctx, rows) { action ->
             when (action) {
                 is ViewMenuAction.Sort -> Prefs.setTaskSort(ctx, action.sort.name)
                 is ViewMenuAction.Done -> Prefs.setTaskDoneMode(ctx, action.mode.name)
-                ViewMenuAction.TagFilter -> { showTagFilter(); return@show }
-                ViewMenuAction.TabSource -> { showTabSource(); return@show }
-                ViewMenuAction.TabOrder -> { showTabOrder(subRow = false); return@show }
-                ViewMenuAction.HideGrouped ->
-                    Prefs.setTaskAllHidesGrouped(ctx, !Prefs.taskAllHidesGrouped(ctx))
+                ViewMenuAction.ShowNow -> {
+                    Prefs.setTaskShowNow(ctx, !Prefs.taskShowNow(ctx))
+                    refreshNow()
+                }
+                ViewMenuAction.PlaceFiltered -> { confirmPlaceFiltered(); return@show }
+                ViewMenuAction.PlaceAll -> { confirmPlaceAll(); return@show }
                 ViewMenuAction.GroupsLast ->
                     Prefs.setTaskGroupsLast(ctx, !Prefs.taskGroupsLast(ctx))
                 ViewMenuAction.StatsSpan -> { showStatsSpan(); return@show }
@@ -241,50 +239,6 @@ class HobbyFragment : Fragment() {
             .show()
     }
 
-    /** タグで一覧を絞る。当てはまる枝だけを残し、木の形は保つ */
-    private fun showTagFilter() {
-        val ctx = requireContext()
-        val known = Tags.known(loaded)
-        if (known.isEmpty()) {
-            Toast.makeText(ctx, "まだタグがありません。タスクを編集して付けてください", Toast.LENGTH_LONG).show()
-            return
-        }
-        val selected = Prefs.tagFilter(ctx).toMutableSet()
-        val checked = BooleanArray(known.size) { selected.contains(known[it]) }
-        AlertDialog.Builder(ctx)
-            .setTitle("タグで絞り込む")
-            .setMultiChoiceItems(known.toTypedArray(), checked) { _, which, isChecked ->
-                if (isChecked) selected.add(known[which]) else selected.remove(known[which])
-            }
-            .setPositiveButton("絞り込む") { _, _ ->
-                Prefs.setTagFilter(ctx, selected)
-                updateSortLabel(); render()
-            }
-            .setNeutralButton("絞り込みをやめる") { _, _ ->
-                Prefs.setTagFilter(ctx, emptySet())
-                updateSortLabel(); render()
-            }
-            .setNegativeButton("やめる", null)
-            .show()
-    }
-
-    /** タブに何を並べるかを選ぶ */
-    private fun showTabSource() {
-        val ctx = requireContext()
-        val sources = TabSource.entries
-        val cur = TabSource.from(Prefs.taskTabSource(ctx))
-        val labels = sources.map { if (it == cur) "● ${it.label}" else "　${it.label}" }
-        AlertDialog.Builder(ctx)
-            .setTitle("横に並べるタブ")
-            .setItems(labels.toTypedArray()) { _, i ->
-                Prefs.setTaskTabSource(ctx, sources[i].name)
-                Prefs.setTaskTab(ctx, TaskTabs.ALL)   // 中身が変わるので先頭へ戻す
-                rebuildTabs(); render()
-            }
-            .setNegativeButton("閉じる", null)
-            .show()
-    }
-
     private fun allParentIds(): Set<Long> =
         loaded.mapNotNull { it.parentId }.toSet()
 
@@ -294,6 +248,289 @@ class HobbyFragment : Fragment() {
         if (!cur.add(item.id)) cur.remove(item.id)
         Prefs.setCollapsed(ctx, cur)
         render()
+    }
+
+    // ---- 絞り込み ----
+
+    /** 絞り込みを変えて覚える。検索欄から来た時はチップを作り直さない（打つたびに点滅する） */
+    private fun setFilter(next: TaskFilter, rebuildChips: Boolean = true) {
+        filter = next
+        Prefs.setTaskFilter(requireContext(), next)
+        if (rebuildChips) rebuildChips()
+        render()
+        refreshNow()
+    }
+
+    private fun placeLabel(id: String): String {
+        val ctx = requireContext()
+        return dev.togar.dynasched.Places.taskChoices(dev.togar.dynasched.Places.all(ctx))
+            .firstOrNull { it.first == id }?.second ?: id
+    }
+
+    private fun filterSummary(f: TaskFilter): String =
+        f.summary(::placeLabel) { id -> loaded.firstOrNull { it.id == id }?.name }.joinToString(" × ")
+
+    /**
+     * 条件チップ。どれも押すと選ぶ画面が開く。効いているものは色を付けて中身を見せる。
+     * **効いている条件が見えていないと「タスクが消えた」と思う**ので、短くても必ず出す。
+     */
+    private fun rebuildChips() {
+        if (!isAdded) return
+        val f = filter
+        chips.removeAllViews()
+        chips.addView(chip(if (f.habit == TaskFilter.Habit.ALL) "習慣" else f.habit.label,
+            f.habit != TaskFilter.Habit.ALL) { pickHabit() })
+        chips.addView(chip(if (f.places.isEmpty()) "場所" else f.places.joinToString("・") { placeLabel(it) },
+            f.places.isNotEmpty()) { pickPlaces() })
+        chips.addView(chip(
+            if (f.priorities.isEmpty()) "優先度"
+            else "優先度 " + f.priorities.sortedDescending().joinToString("・") { TaskFilter.priorityLabel(it) },
+            f.priorities.isNotEmpty()) { pickPriorities() })
+        chips.addView(chip(if (f.tags.isEmpty()) "タグ" else f.tags.sorted().joinToString(" ") { "#$it" },
+            f.tags.isNotEmpty()) { pickTags() })
+        val groupName = f.groupId?.let { id -> loaded.firstOrNull { it.id == id }?.name }
+        chips.addView(chip(groupName ?: "グループ", groupName != null) { pickGroup() })
+        if (!f.isEmpty) {
+            chips.addView(chip("✕ 条件を消す", false) {
+                filter = TaskFilter()
+                searchInput.setText("")
+                setFilter(TaskFilter())
+            })
+        }
+    }
+
+    private fun chip(label: String, active: Boolean, onClick: () -> Unit) =
+        com.google.android.material.chip.Chip(requireContext()).apply {
+            val ctx = requireContext()
+            text = label
+            isCheckable = false
+            chipStrokeWidth = 0f
+            chipBackgroundColor = android.content.res.ColorStateList.valueOf(
+                androidx.core.content.ContextCompat.getColor(ctx, if (active) R.color.primary else R.color.surface_variant)
+            )
+            setTextColor(androidx.core.content.ContextCompat.getColor(ctx, R.color.white))
+            setOnClickListener { onClick() }
+        }
+
+    private fun pickHabit() {
+        val ctx = requireContext()
+        val modes = TaskFilter.Habit.entries
+        val labels = modes.map { if (it == filter.habit) "● ${it.label}" else "　${it.label}" } + "　習慣の繰り返しを直す…"
+        AlertDialog.Builder(ctx)
+            .setTitle("習慣")
+            .setItems(labels.toTypedArray()) { _, i ->
+                if (i < modes.size) setFilter(filter.copy(habit = modes[i]))
+                else RoutineEditor.showList(ctx) { if (isAdded) load() }
+            }
+            .setNegativeButton("閉じる", null)
+            .show()
+    }
+
+    /** 複数から選ぶ。何も選ばなければ条件なし */
+    private fun <T> pickMany(
+        title: String, values: List<T>, labels: List<String>, selected: Set<T>, onPick: (Set<T>) -> Unit
+    ) {
+        val picked = selected.toMutableSet()
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setMultiChoiceItems(labels.toTypedArray(), BooleanArray(values.size) { values[it] in picked }) { _, i, on ->
+                if (on) picked.add(values[i]) else picked.remove(values[i])
+            }
+            .setPositiveButton("絞り込む") { _, _ -> onPick(picked) }
+            .setNeutralButton("条件なし") { _, _ -> onPick(emptySet()) }
+            .setNegativeButton("やめる", null)
+            .show()
+    }
+
+    private fun pickPlaces() {
+        val choices = dev.togar.dynasched.Places.taskChoices(dev.togar.dynasched.Places.all(requireContext()))
+        pickMany("場所", choices.map { it.first }, choices.map { it.second }, filter.places) {
+            setFilter(filter.copy(places = it))
+        }
+    }
+
+    private fun pickPriorities() {
+        val values = TaskFilter.PRIORITIES
+        pickMany("優先度", values, values.map { TaskFilter.priorityLabel(it) }, filter.priorities) {
+            setFilter(filter.copy(priorities = it))
+        }
+    }
+
+    private fun pickTags() {
+        val known = Tags.known(loaded)
+        if (known.isEmpty()) {
+            Toast.makeText(requireContext(), "まだタグがありません。タスクを編集して付けてください", Toast.LENGTH_LONG).show()
+            return
+        }
+        // 消えたタグで絞ったままだと何も出なくなるので、選べる物に今のものを足しておく
+        val values = (known + filter.tags.filter { it !in known })
+        pickMany("タグ", values, values.map { "#$it" }, filter.tags) {
+            setFilter(filter.copy(tags = it))
+        }
+    }
+
+    /** 子を持つタスク（グループ）の中だけを見る。入れ子は「親 › 子」と書いて区別する */
+    private fun pickGroup() {
+        val ctx = requireContext()
+        val parents = loaded.mapNotNullTo(HashSet()) { it.parentId }
+        val byId = loaded.associateBy { it.id }
+        fun path(i: HobbyItem): String {
+            val names = ArrayList<String>()
+            var cur: HobbyItem? = i
+            val seen = HashSet<Long>()
+            while (cur != null && seen.add(cur.id)) { names.add(cur.name); cur = cur.parentId?.let { byId[it] } }
+            return names.asReversed().joinToString(" › ")
+        }
+        val groups = loaded.filter { it.id in parents }.map { it.id to path(it) }.sortedBy { it.second }
+        if (groups.isEmpty()) {
+            Toast.makeText(ctx, "グループがありません（子タスクを持つタスクがグループになります）", Toast.LENGTH_LONG).show()
+            return
+        }
+        val labels = listOf(if (filter.groupId == null) "● すべて" else "　すべて") +
+            groups.map { (id, name) -> if (id == filter.groupId) "● $name" else "　$name" }
+        AlertDialog.Builder(ctx)
+            .setTitle("グループ")
+            .setItems(labels.toTypedArray()) { _, i ->
+                setFilter(filter.copy(groupId = if (i == 0) null else groups[i - 1].first))
+            }
+            .setNegativeButton("閉じる", null)
+            .show()
+    }
+
+    // ---- いまやること ----
+
+    private var nowLoc = ""
+    private var nowMinutes = 30
+
+    /**
+     * いまの場所・時間でできる候補を探して、1つだけ出す。
+     * 絞り込んでいればその中から（「寮のみ × #英語」で絞れば、その中で今やるもの）
+     */
+    private fun refreshNow() {
+        if (!isAdded) return
+        val ctx = requireContext()
+        if (!Prefs.taskShowNow(ctx)) {
+            nowCard.visibility = View.GONE
+            return
+        }
+        val app = ctx.applicationContext
+        val f = filter
+        Api.async({ dev.togar.dynasched.data.NowTasks.pick(app, f) }, { now ->
+            if (!isAdded) return@async
+            val next = now.items
+            // 同じ候補が先頭のままなら、「ほかの」で送った位置を保つ
+            val keep = nowCandidates.getOrNull(nowIndex)?.let { cur -> next.indexOfFirst { it.id == cur.id && it.kind == cur.kind } } ?: -1
+            nowCandidates = next
+            nowIndex = if (keep >= 0) keep else 0
+            nowLoc = now.place
+            nowMinutes = now.minutes
+            renderNow()
+        }, { if (isAdded) nowCard.visibility = View.GONE })
+    }
+
+    private fun renderNow() {
+        val ctx = requireContext()
+        val place = dev.togar.dynasched.Places.name(dev.togar.dynasched.Places.all(ctx), nowLoc)
+        nowCard.visibility = View.VISIBLE
+        nowLabel.text = "いまやること ・ $place・${nowMinutes}分 ▾"
+        val item = nowCandidates.getOrNull(nowIndex)
+        val doButton = nowCard.findViewById<Button>(R.id.nowDo)
+        val nextButton = nowCard.findViewById<Button>(R.id.nowNext)
+        if (item == null) {
+            nowTitle.text = if (filter.isEmpty) "いまできるものはありません。休みましょう"
+                else "この条件で、いまできるものはありません"
+            doButton.visibility = View.GONE
+            nextButton.visibility = View.GONE
+            return
+        }
+        nowTitle.text = "${if (item.kind == "material") "🎯 " else ""}${item.title}（${item.minutes}分）"
+        doButton.visibility = View.VISIBLE
+        nextButton.visibility = if (nowCandidates.size > 1) View.VISIBLE else View.GONE
+        nextButton.text = "ほかの ${nowIndex + 1}/${nowCandidates.size}"
+    }
+
+    /** 決めたら、終わっているはずの時刻に確認を出す（「暇なとき」と同じ） */
+    private fun doNow() {
+        val item = nowCandidates.getOrNull(nowIndex) ?: return
+        FreeTimeDialog.decide(requireActivity(), item, nowMinutes)
+    }
+
+    /** いまいる場所を変える。ウィジェット・「暇なとき」と同じ設定を使う */
+    private fun pickNowPlace() {
+        val ctx = requireContext()
+        val places = dev.togar.dynasched.Places.all(ctx)
+        val cur = places.indexOfFirst { it.id == Prefs.widgetLoc(ctx) }
+        AlertDialog.Builder(ctx)
+            .setTitle("いまどこにいますか")
+            .setSingleChoiceItems(places.map { it.name }.toTypedArray(), cur) { d, i ->
+                d.dismiss()
+                Prefs.setWidgetLoc(ctx, places[i].id)
+                refreshNow()
+            }
+            .setNegativeButton("やめる", null)
+            .show()
+    }
+
+    // ---- 配置の対象 ----
+
+    private fun renderPlaceFilter() {
+        val pf = Prefs.placeFilter(requireContext())
+        if (pf == null) {
+            placeFilterText.visibility = View.GONE
+            return
+        }
+        placeFilterText.visibility = View.VISIBLE
+        placeFilterText.text = "📅 カレンダーに置くのはこの条件だけ: ${filterSummary(pf)}（押すと解除）"
+    }
+
+    private fun confirmPlaceFiltered() {
+        val ctx = requireContext()
+        if (filter.isEmpty) return
+        AlertDialog.Builder(ctx)
+            .setTitle("いまの絞り込みだけ配置する")
+            .setMessage(
+                "条件: ${filterSummary(filter)}\n\n" +
+                    "この条件に当てはまるタスクだけをカレンダーに置きます。毎朝の自動配置も同じです。\n" +
+                    "予定（教材）はこれまで通り置きます。"
+            )
+            .setPositiveButton("配置する") { _, _ ->
+                Prefs.setPlaceFilter(ctx, filter)
+                renderPlaceFilter()
+                runPlacement()
+            }
+            .setNegativeButton("やめる", null)
+            .show()
+    }
+
+    private fun confirmPlaceAll() {
+        val ctx = requireContext()
+        val pf = Prefs.placeFilter(ctx)
+        if (pf == null) {
+            Toast.makeText(ctx, "いまは全部のタスクを配置しています", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle("全部のタスクを配置する")
+            .setMessage("いまは「${filterSummary(pf)}」だけを置いています。絞り込みをやめて組み直しますか？")
+            .setPositiveButton("全部置く") { _, _ ->
+                Prefs.setPlaceFilter(ctx, null)
+                renderPlaceFilter()
+                runPlacement()
+            }
+            .setNegativeButton("やめる", null)
+            .show()
+    }
+
+    /** 組み直す。結果は短く言うだけ（詳しくは設定の「予定の自動配置」） */
+    private fun runPlacement() {
+        val app = requireContext().applicationContext
+        Toast.makeText(app, "組み直しています…", Toast.LENGTH_SHORT).show()
+        Api.async({ Repo.current(app).runScheduler(app, Prefs.fillDays(app)) }, { r ->
+            if (!isAdded) return@async
+            Toast.makeText(requireContext(), "タスク${r.placedHobby}件・予定${r.placedStudy}件を置きました", Toast.LENGTH_LONG).show()
+        }, { e ->
+            if (isAdded) Toast.makeText(requireContext(), "組み直せませんでした: ${Api.friendlyMessage(e)}", Toast.LENGTH_LONG).show()
+        })
     }
 
     // ---- 読み込みと描画 ----
@@ -311,8 +548,9 @@ class HobbyFragment : Fragment() {
                 swipe.isRefreshing = false
                 loaded = all
                 statRowsCache = stats
-                rebuildTabs()
+                rebuildChips()
                 render()
+                refreshNow()
                 celebrateIfReached(stats)
             },
             onError = { e ->
@@ -322,67 +560,6 @@ class HobbyFragment : Fragment() {
                 empty.text = "読み込みエラー: ${Api.friendlyMessage(e)}"
             }
         )
-    }
-
-    /** いま選んでいるタブ。無くなっていたら「すべて」に戻す */
-    private fun currentTab(): String {
-        val ctx = requireContext()
-        val key = Prefs.taskTab(ctx)
-        val list = TaskTabs.tabs(loaded, TabSource.from(Prefs.taskTabSource(ctx)), dev.togar.dynasched.Places.all(ctx))
-        return if (TaskTabs.exists(list, key)) key else TaskTabs.ALL
-    }
-
-    /**
-     * タブを作り直す。中身（グループ／タグ）は増減するので、読み込みのたびに組み直す。
-     * 差し替え中の選択通知は無視する（作り直しただけで描画が走ると点滅する）。
-     */
-    private fun rebuildTabs() {
-        val ctx = requireContext()
-        val source = TabSource.from(Prefs.taskTabSource(ctx))
-        val list = TaskTabs.applyOrder(TaskTabs.tabs(loaded, source, dev.togar.dynasched.Places.all(ctx)), Prefs.taskTabOrder(ctx))
-        if (list.isEmpty()) {
-            tabs.visibility = View.GONE
-            tabs.removeAllTabs()
-            return
-        }
-        val selected = currentTab()
-        rebuildingTabs = true
-        tabs.removeAllTabs()
-        for (t in list) {
-            val tab = tabs.newTab().setText(t.label)
-            tab.tag = t.key
-            tabs.addTab(tab, t.key == selected)
-            // 長押しでタブの並びを変える
-            tab.view.setOnLongClickListener { showTabOrder(subRow = false); true }
-        }
-        rebuildingTabs = false
-        tabs.visibility = View.VISIBLE
-        rebuildSubTabs()
-    }
-
-    /** 塊の中に小グループがある時だけ、下段を出す */
-    private fun rebuildSubTabs() {
-        val list = TaskTabs.applyOrder(
-            TaskTabs.subTabs(loaded, currentTab()), Prefs.taskTabOrder(requireContext())
-        )
-        if (list.isEmpty()) {
-            subTabs.visibility = View.GONE
-            subTabs.removeAllTabs()
-            subTabKey = ""
-            return
-        }
-        if (list.none { it.key == subTabKey }) subTabKey = ""
-        rebuildingTabs = true
-        subTabs.removeAllTabs()
-        for (t in list) {
-            val tab = subTabs.newTab().setText(t.label)
-            tab.tag = t.key
-            // 空 = 塊ぜんぶ。先頭がそれに当たる
-            subTabs.addTab(tab, t.key == subTabKey || (subTabKey.isEmpty() && t == list.first()))
-            tab.view.setOnLongClickListener { showTabOrder(subRow = true); true }
-        }
-        rebuildingTabs = false
-        subTabs.visibility = View.VISIBLE
     }
 
     /** 片付いた数・増えた数。数えるのは [Stats]、ここは出すだけ */
@@ -401,39 +578,24 @@ class HobbyFragment : Fragment() {
     private fun statsSpan(ctx: android.content.Context): Stats.Span =
         Stats.Span.entries.firstOrNull { it.name == Prefs.taskStatsSpan(ctx) } ?: Stats.Span.WEEK
 
-    /** いま開いている塊。塊のタブでなければ null */
-    private fun groupOfCurrentTab(): HobbyItem? {
-        val key = if (subTabKey.isNotEmpty()) subTabKey else currentTab()
-        val id = TaskTabs.groupIdOf(key) ?: return null
-        return loaded.firstOrNull { it.id == id }
-    }
-
     /** 読み直さずに並べ直す。並び順・折りたたみ・絞り込み・タブを変えたときはこちらだけ */
     private fun render() {
         if (!isAdded) return
         val ctx = requireContext()
-        val filter = Prefs.tagFilter(ctx)
-        val tabKey = currentTab()
-        val source = TabSource.from(Prefs.taskTabSource(ctx))
-        // 下段で小グループを選んでいればそちらが優先。無ければ上段の塊ぜんぶ
-        val effective = if (subTabKey.isNotEmpty() && subTabKey != tabKey) subTabKey else tabKey
-        val inTab = TaskTabs.apply(
-            loaded, effective, source, Prefs.taskAllHidesGrouped(ctx)
-        )
-        val visible = Tags.filterTree(inTab, filter)
+        val visible = filter.apply(loaded)
         renderStats(ctx)
+        renderPlaceFilter()
         val mode = doneMode()
-        // グループを下に回すのは「すべて」だけ。塊のタブの中は中身そのものが一つのグループなので
+        // グループを下に回すのは塊で絞っていない時だけ。塊の中は中身そのものが一つのグループなので
         val rows = TaskList.build(visible, sortMode(), Prefs.collapsed(ctx), mode,
-            groupsLast = Prefs.taskGroupsLast(ctx) && tabKey == TaskTabs.ALL)
+            groupsLast = Prefs.taskGroupsLast(ctx) && filter.groupId == null)
         adapter.places = dev.togar.dynasched.Places.all(ctx)
         adapter.submit(rows)
         empty.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
         empty.text = when {
-            filter.isNotEmpty() -> "「#${filter.joinToString(" #")}」に当てはまるタスクはありません"
             // 全部終わっている時に「タスクはありません」だと消えたように見える
             mode == DoneMode.HIDDEN && visible.isNotEmpty() -> "残っているタスクはありません"
-            tabKey != TaskTabs.ALL -> "この中にタスクはありません"
+            !filter.isEmpty -> "この条件に当てはまるタスクはありません"
             else -> "タスクはありません"
         }
     }
@@ -441,36 +603,9 @@ class HobbyFragment : Fragment() {
     // ---- つかんで動かす ----
 
     /**
-     * いま開いているタブで、一番浅く置いた時の親。
-     * 塊のタブ（下段で小グループを選んでいればそちら）ならその塊、それ以外は最上位。
+     * 一番浅く置いた時の親。塊で絞っていればその塊、それ以外は最上位。
      */
-    private fun dropRoot(): Long? {
-        val tabKey = currentTab()
-        val effective = if (subTabKey.isNotEmpty() && subTabKey != tabKey) subTabKey else tabKey
-        return TaskTabs.groupIdOf(effective)
-    }
-
-    // ---- タブの並び ----
-
-    /**
-     * タブの左右の並びを変える。上段と下段は別々に並べる。
-     * 先頭の「すべて」「ぜんぶ」は動かさない（いつも同じ場所にある方が戻りやすい）。
-     */
-    private fun showTabOrder(subRow: Boolean) {
-        val ctx = requireContext()
-        val order = Prefs.taskTabOrder(ctx)
-        val list = if (subRow) TaskTabs.applyOrder(TaskTabs.subTabs(loaded, currentTab()), order)
-            else TaskTabs.applyOrder(TaskTabs.tabs(loaded, TabSource.from(Prefs.taskTabSource(ctx)), dev.togar.dynasched.Places.all(ctx)), order)
-        val movable = list.drop(1)
-        if (movable.size < 2) {
-            Toast.makeText(ctx, "並べ替えるほどタブがありません", Toast.LENGTH_SHORT).show()
-            return
-        }
-        TabOrderDialog.show(requireActivity(), if (subRow) "下段のタブの並び" else "タブの並び", movable) { keys ->
-            Prefs.setTaskTabOrder(ctx, TaskTabs.saveOrder(Prefs.taskTabOrder(ctx), keys))
-            if (subRow) rebuildSubTabs() else rebuildTabs()
-        }
-    }
+    private fun dropRoot(): Long? = filter.groupId?.takeIf { id -> loaded.any { it.id == id } }
 
     /** つかんだ時の段。横のずれと足して落とし先の段を出す */
     private var dragBaseLevel = 0
@@ -642,7 +777,7 @@ class HobbyFragment : Fragment() {
             TaskList.priorityAfterMove(rows, moved.id, dropIndex) else null
 
         // グループを下に回している時は、グループを単独タスクの上に置いても下に戻る。黙って戻ると壊れたように見える
-        if (Prefs.taskGroupsLast(requireContext()) && currentTab() == TaskTabs.ALL) {
+        if (Prefs.taskGroupsLast(requireContext()) && filter.groupId == null) {
             val groups = loaded.mapNotNullTo(HashSet()) { it.parentId }
             if (drop.siblingIds.map { it in groups }.zipWithNext().any { (a, b) -> a && !b }) {
                 Toast.makeText(requireContext(), "グループは下にまとまります（「並び順」で解除できます）",
@@ -747,14 +882,13 @@ class HobbyFragment : Fragment() {
     /**
      * 場所ごとにタスクを選んで、別の場所へまとめて移す。
      * 1件ずつ編集を開いて直すのは、数十件あると現実的に続かない。
-     * 「場所ごと」のタブで開いていれば、その場所から始める。
+     * 場所を1つだけで絞っていれば、その場所から始める。
      */
     private fun bulkPlace() {
         val ctx = requireContext()
         val choices = dev.togar.dynasched.Places.taskChoices(dev.togar.dynasched.Places.all(ctx))
-        val tab = currentTab()
-        if (tab.startsWith("p:")) {
-            pickTasksAt(tab.removePrefix("p:"), choices)
+        filter.places.singleOrNull()?.let {
+            pickTasksAt(it, choices)
             return
         }
         val counts = choices.map { (id, _) -> movableAt(id).size }
@@ -921,6 +1055,14 @@ class HobbyFragment : Fragment() {
             }
         }
 
+        // 習慣から作られたタスクは、ここで直しても次の回には効かない。繰り返しの元へ行けるようにする
+        if (item.routineId > 0) {
+            root.addView(android.widget.Button(ctx).apply {
+                text = "繰り返し（習慣）の方を直す"
+                setOnClickListener { openRoutine(item.routineId) }
+            })
+        }
+
         val scroll = android.widget.ScrollView(ctx).apply { addView(root) }
 
         androidx.appcompat.app.AlertDialog.Builder(ctx)
@@ -976,7 +1118,18 @@ class HobbyFragment : Fragment() {
             .show()
     }
 
-    private fun openAddChild(parent: HobbyItem) {
+    private fun openRoutine(id: Long) {
+        val ctx = requireContext()
+        val app = ctx.applicationContext
+        Api.async({ Repo.current(app).routines(app).firstOrNull { it.id == id } }, { r ->
+            if (!isAdded) return@async
+            if (r == null) {
+                Toast.makeText(ctx, "元の習慣はもう消されています", Toast.LENGTH_SHORT).show()
+            } else RoutineEditor.edit(ctx, r) { if (isAdded) load() }
+        }, { })
+    }
+
+        private fun openAddChild(parent: HobbyItem) {
         val intent = Intent(requireContext(), AddTaskActivity::class.java)
         intent.putExtra(AddTaskActivity.EXTRA_PARENT_ID, parent.id)
         intent.putExtra(AddTaskActivity.EXTRA_PARENT_NAME, parent.name)

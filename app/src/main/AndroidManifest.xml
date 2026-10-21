@@ -29,6 +29,11 @@
         android:name="dev.togar.dynasched.permission.CONTROL_SESSION"
         android:protectionLevel="signature" />
 
+    <!-- 読みに来た相手の署名を確かめるため（Android 11 以降は見える相手を宣言する） -->
+    <queries>
+        <package android:name="com.dopachiru" />
+    </queries>
+
     <application
         android:name=".App"
         android:allowBackup="true"
@@ -46,6 +51,11 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- ドパチルの警告画面でタスクを押された時（ui.DoTaskDialog） -->
+            <intent-filter>
+                <action android:name="dev.togar.dynasched.action.DO_TASK" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
@@ -115,6 +125,14 @@
                 <action android:name="dev.togar.dynasched.action.ABORT_SESSION" />
             </intent-filter>
         </receiver>
+
+        <!-- ドパチルが「いまやれるタスク」を読みに来る口。読むだけ。
+             相手の署名はコードで確かめる（integration.TrustedCallers）。
+             鍵が違うので signature 権限では守れない -->
+        <provider
+            android:name=".integration.NowTasksProvider"
+            android:authorities="${applicationId}.nowtasks"
+            android:exported="true" />
 
         <!-- ウィジェット1枚ごとの設定。置いた時と、ウィジェットの⚙から開く -->
         <activity

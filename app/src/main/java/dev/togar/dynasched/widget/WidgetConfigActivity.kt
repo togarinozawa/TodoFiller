@@ -40,6 +40,11 @@ class WidgetConfigActivity : AppCompatActivity() {
     private var tags: MutableSet<String> = HashSet()
     private var knownTags: List<String> = emptyList()
 
+    /** 設定の「文字の大きさ」を効かせる */
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(dev.togar.dynasched.FontScale.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 戻るで閉じたら「置くのをやめた」ことになる（ホーム画面に置かれない）

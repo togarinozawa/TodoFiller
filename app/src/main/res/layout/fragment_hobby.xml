@@ -41,36 +41,113 @@
             android:textSize="12sp" />
     </LinearLayout>
 
-    <!-- グループ／タグを横に並べるタブ。設定で出さないこともできる。
-         塊を選んでいる間は全体が見えないので、階層をいじる操作は「すべて」タブだけ -->
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/taskTabs"
+    <!-- 検索。名前とメモの部分一致。グループの名前に当たれば配下ぜんぶ -->
+    <EditText
+        android:id="@+id/searchInput"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:visibility="gone"
-        app:tabMode="scrollable"
-        app:tabGravity="start"
-        app:tabIndicatorColor="@color/primary"
-        app:tabSelectedTextColor="@color/primary"
-        app:tabTextColor="@color/on_bg_dim" />
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:hint="🔍 名前・メモで探す"
+        android:imeOptions="actionSearch"
+        android:inputType="text"
+        android:maxLines="1"
+        android:textColor="@color/on_bg"
+        android:textColorHint="@color/on_bg_dim"
+        android:textSize="14sp" />
 
-    <!-- 塊の中に小グループがある時だけ出る下段。上段より小さく、字も細くして
-         「タブの中のタブ」だと見て分かるようにしてある -->
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/taskSubTabs"
+    <!-- 条件チップ。種類をまたいで掛け合わせる（場所 × 優先度 × タグ …）。
+         中身はコードで作る（タグや場所は増減するので） -->
+    <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/filterChips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:chipSpacingHorizontal="6dp"
+            app:singleLine="true" />
+    </HorizontalScrollView>
+
+    <!-- 配置の対象を絞っている間だけ出す。気付かないまま「置かれないタスクがある」と思わないように -->
+    <TextView
+        android:id="@+id/placeFilterText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="4dp"
+        android:background="@color/surface_variant"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:text=""
+        android:textColor="@color/on_bg"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <!-- いまやること。候補を1つだけ出して「これをやる」と言い切る -->
+    <LinearLayout
+        android:id="@+id/nowCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="8dp"
         android:background="@color/surface"
-        android:visibility="gone"
-        app:tabMode="scrollable"
-        app:tabGravity="start"
-        app:tabMinWidth="0dp"
-        app:tabPaddingStart="12dp"
-        app:tabPaddingEnd="12dp"
-        app:tabIndicatorColor="@color/accent_goal"
-        app:tabIndicatorHeight="2dp"
-        app:tabSelectedTextColor="@color/accent_goal"
-        app:tabTextColor="@color/on_bg_dim" />
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="4dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/nowLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="@color/on_bg_dim"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/nowTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="2dp"
+            android:text=""
+            android:textColor="@color/on_bg"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/nowNext"
+                style="?attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ほかの"
+                android:textColor="@color/on_bg_dim" />
+
+            <Button
+                android:id="@+id/nowDo"
+                style="?attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="やる"
+                android:textColor="@color/primary" />
+        </LinearLayout>
+    </LinearLayout>
 
     <!-- 片付いた数・増えた数。設定で消せる -->
     <TextView

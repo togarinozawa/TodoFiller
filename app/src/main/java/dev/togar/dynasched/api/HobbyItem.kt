@@ -22,6 +22,8 @@ data class HobbyItem(
     val tags: String = "",
     /** 作った日時（`yyyy-MM-dd HH:mm:ss`）。古い行は空。止まっているタスクの見分けに使う */
     val createdAt: String = "",
+    /** 習慣から作られたタスクなら、その習慣のID。手で作ったものは 0 */
+    val routineId: Long = 0,
     var level: Int = 0,
     var hasChildren: Boolean = false  // 子を持つタスクはチェックボックス非表示（葉のみ完了可能）
 ) {
@@ -41,7 +43,8 @@ data class HobbyItem(
                 location = if (o.isNull("location")) "anywhere" else o.optString("location", "anywhere"),
                 note = if (o.isNull("note")) "" else o.optString("note", ""),
                 priority = o.optInt("priority", 5),
-                color = if (o.isNull("color")) "" else o.optString("color", "")
+                color = if (o.isNull("color")) "" else o.optString("color", ""),
+                routineId = o.optLong("routine_id", 0)
             )
         }
     }

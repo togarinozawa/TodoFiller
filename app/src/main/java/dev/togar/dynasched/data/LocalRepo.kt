@@ -129,7 +129,7 @@ object LocalRepo : Repo {
         // 計画に必要な日数ぶん読む。配置側は先頭 days 日しか見ないので余分は害にならない
         val snap = withAppSlots(ctx, CalendarRepo.read(ctx, planDays, calId), planDays)
         val materials = materialRows(ctx)
-        val hobbies = hobbyRows(ctx)
+        val hobbies = placeableHobbies(ctx)
         val eng = engine(ctx)
 
         // 先に計画を立てて「応用を外す/周回を減らす」を確定させる。
@@ -307,7 +307,8 @@ object LocalRepo : Repo {
                 color = c.str("color"),
                 sortOrder = c.int("sort_order"),
                 tags = c.str("tags"),
-                createdAt = c.str("created_at")
+                createdAt = c.str("created_at"),
+                routineId = c.long("routine_id")
             )
         }
 
@@ -900,6 +901,17 @@ object LocalRepo : Repo {
         isExam = c.bool("is_exam"),
         location = c.str("location")
     )
+
+    /**
+     * 配置に回すタスク。タスク画面で「この条件だけ配置」にしていれば、それに当たるものだけ。
+     * 教材は別の画面で管理しているので、ここでは絞らない
+     */
+    private fun placeableHobbies(ctx: Context): List<HobbyRow> {
+        val all = hobbyRows(ctx)
+        val filter = Prefs.placeFilter(ctx) ?: return all
+        val ok = filter.leafIds(getHobby(ctx))
+        return all.filter { it.id in ok }
+    }
 
     private fun hobbyRows(ctx: Context): List<HobbyRow> =
         LocalDb.get(ctx).readableDatabase.rawQuery(

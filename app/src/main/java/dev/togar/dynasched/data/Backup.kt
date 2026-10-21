@@ -38,13 +38,13 @@ object Backup {
      * **Notionのトークンは入れない**（持ち出したファイルが漏れるとワークスペースごと触られる）。
      */
     private val PREF_KEYS = setOf(
-        "fill_days", "task_sort", "task_done_mode", "owner_mode", "notion_schema",
+        "fill_days", "font_scale", "task_sort", "task_done_mode", "owner_mode", "notion_schema",
         "wake_min", "bedtime_min", "bedtime_notice", "avoid_busy", "animations",
         "task_order", "grouping", "calendar_horizontal", "daily_goal",
-        "task_show_stats", "task_stats_span", "task_tab_source", "task_all_hides_grouped",
+        "task_show_stats", "task_stats_span", "place_filter", "task_show_now",
         "task_groups_last", "widget_loc",
         // v47で足したもの
-        "places", "task_tab_order"
+        "places"
     )
 
     /** 控える表。端末にある表から、控えないものを除く */

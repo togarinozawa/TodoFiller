@@ -238,9 +238,9 @@ class TaskListTest {
     }
 
     @Test
-    fun `塊のタブで一番浅く置いても塊の外へは出ない`() {
-        // 「親」のタブを開いている。子1(と孫)・子2 が0段目に並ぶ
-        val inTab = TaskTabs.apply(tree, "g:1")
+    fun `塊で絞って一番浅く置いても塊の外へは出ない`() {
+        // 「親」で絞っている。子1(と孫)・子2 が0段目に並ぶ
+        val inTab = TaskFilter(groupId = 1L).apply(tree)
         val rows = TaskList.build(inTab, TaskSort.MANUAL, emptySet(), DoneMode.INLINE)  // 子1,孫,子2
         val after = moved(rows, rows.indexOfFirst { it.item.name == "子2" }, 0)        // 子2,子1,孫
         val drop = TaskList.dropTarget(after, tree, 0, 0, rootParentId = 1L)!!
@@ -249,8 +249,8 @@ class TaskListTest {
     }
 
     @Test
-    fun `塊のタブで孫を0段目へ出すと、塊の直下に来る`() {
-        val inTab = TaskTabs.apply(tree, "g:1")
+    fun `塊で絞って孫を0段目へ出すと、塊の直下に来る`() {
+        val inTab = TaskFilter(groupId = 1L).apply(tree)
         val rows = TaskList.build(inTab, TaskSort.MANUAL, emptySet(), DoneMode.INLINE)  // 子1,孫,子2
         val mago = rows.indexOfFirst { it.item.name == "孫" }
         val drop = TaskList.dropTarget(rows, tree, mago, 0, rootParentId = 1L)!!
@@ -271,54 +271,17 @@ class TaskListTest {
     }
 
     @Test
-    fun `場所ごとのタブ。葉の場所で絞り、親は並びのために残す`() {
-        val places = dev.togar.dynasched.Places.DEFAULT + dev.togar.dynasched.Place("p1", "寮")
-        val tabs = TaskTabs.tabs(tree, TabSource.PLACE, places)
-        assertEquals(listOf("", "p:home", "p:out", "p:p1", "p:anywhere"), tabs.map { it.key })
-        assertEquals("寮のみ", tabs[3].label)
+    fun `場所で絞る。葉の場所で見て、親は並びのために残す`() {
         val items = listOf(
             HobbyItem(id = 1, name = "帰省", parentId = null, isCompleted = false, location = "anywhere"),
             HobbyItem(id = 2, name = "部屋の片付け", parentId = 1, isCompleted = false, location = "home"),
             HobbyItem(id = 3, name = "レポート", parentId = 1, isCompleted = false, location = "p1"),
             HobbyItem(id = 4, name = "散歩", parentId = null, isCompleted = false, location = "")
         )
-        assertEquals(listOf(1L, 2L), TaskTabs.apply(items, "p:home").map { it.id })
-        assertEquals(listOf(1L, 3L), TaskTabs.apply(items, "p:p1").map { it.id })
+        assertEquals(listOf(1L, 2L), TaskFilter(places = setOf("home")).apply(items).map { it.id })
+        assertEquals(listOf(1L, 3L), TaskFilter(places = setOf("p1")).apply(items).map { it.id })
         // 親は葉ではないので「どこでも」には数えない。場所の空はどこでも
-        assertEquals(listOf(4L), TaskTabs.apply(items, "p:anywhere").map { it.id })
-    }
-
-    @Test
-    fun `場所のタブの下段に、入れ子の塊も並ぶ`() {
-        fun t(id: Long, name: String, parent: Long? = null, loc: String = "home") =
-            HobbyItem(id = id, name = name, parentId = parent, isCompleted = false, location = loc)
-        val items = listOf(
-            t(1, "帰省"), t(2, "部屋", 1), t(3, "机", 2), t(4, "棚", 2),
-            t(5, "庭", 1), t(6, "草取り", 5, loc = "p1"),     // 庭の中身は寮でできる
-            t(7, "買い物", loc = "out")
-        )
-        val subs = TaskTabs.subTabs(items, "p:home")
-        assertEquals(listOf("ぜんぶ", "帰省", "帰省 › 部屋"), subs.map { it.label })
-        // 塊のタブと同じく、塊そのものは出さず中身だけ
-        assertEquals(listOf(3L, 4L), TaskTabs.apply(items, subs[2].key).map { it.id })
-        assertEquals(2L, TaskTabs.groupIdOf(subs[2].key))
-        // 塊の無い場所には下段を出さない
-        assertEquals(emptyList<TaskTab>(), TaskTabs.subTabs(items, "p:out"))
-    }
-
-    @Test
-    fun `タブの並びを当てる。先頭は動かさず、新しいタブは後ろ`() {
-        val tabs = listOf(TaskTab("", "すべて"), TaskTab("g:1", "仕事"),
-            TaskTab("g:2", "家事"), TaskTab("g:3", "趣味"))
-        val r = TaskTabs.applyOrder(tabs, listOf("g:2", "g:1"))
-        assertEquals(listOf("", "g:2", "g:1", "g:3"), r.map { it.key })
-        assertEquals(tabs, TaskTabs.applyOrder(tabs, emptyList()))
-    }
-
-    @Test
-    fun `タブの並びを書き戻しても、出ていないタブの並びは残る`() {
-        val saved = listOf("t:買い物", "g:1", "g:2")
-        assertEquals(listOf("g:2", "g:1", "t:買い物"), TaskTabs.saveOrder(saved, listOf("g:2", "g:1")))
+        assertEquals(listOf(4L), TaskFilter(places = setOf("anywhere")).apply(items).map { it.id })
     }
 
     @Test

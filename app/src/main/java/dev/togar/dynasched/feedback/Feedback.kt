@@ -49,6 +49,26 @@ object Feedback {
         return sb.toString().trimEnd() + "\n"
     }
 
+    /**
+     * 本人用の送り先。非公開の GitHub リポジトリの Issue を受け箱にして、Claude が読んで直す。
+     * アプリに鍵は持たせない。入力済みの「新しい Issue」画面を開くだけで、送るのは本人のログインで
+     */
+    const val ISSUE_REPO = "togarinozawa/skimas-feedback"
+
+    /** URLが長すぎると開けない端末がある。本文はここで切る（トレースは先に縮めてある） */
+    private const val MAX_BODY = 6000
+
+    /** 入力済みの「新しい Issue」画面のURL。題は種類と本文の1行目 */
+    fun issueUrl(kind: Kind, text: String, body: String): String {
+        val first = text.trim().lineSequence().firstOrNull().orEmpty()
+        val title = "[${kind.label}] " + if (first.length > 50) first.take(50) + "…" else first
+        val b = if (body.length > MAX_BODY) body.take(MAX_BODY) + "\n…（長いので切りました）" else body
+        return "https://github.com/$ISSUE_REPO/issues/new?title=${enc(title)}&body=${enc(b)}"
+    }
+
+    private fun enc(s: String): String =
+        java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
+
     fun envLines(env: Env): List<String> = listOf(
         "画面: ${env.screen}",
         "版: v${env.versionName} (${env.versionCode})",

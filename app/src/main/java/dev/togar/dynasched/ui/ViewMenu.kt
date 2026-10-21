@@ -40,11 +40,10 @@ sealed class ViewMenuRow {
 sealed class ViewMenuAction {
     data class Sort(val sort: TaskSort) : ViewMenuAction()
     data class Done(val mode: DoneMode) : ViewMenuAction()
-    object TagFilter : ViewMenuAction()
-    object TabSource : ViewMenuAction()
-    object TabOrder : ViewMenuAction()
-    object HideGrouped : ViewMenuAction()
     object GroupsLast : ViewMenuAction()
+    object ShowNow : ViewMenuAction()
+    object PlaceFiltered : ViewMenuAction()
+    object PlaceAll : ViewMenuAction()
     object StatsSpan : ViewMenuAction()
     object CollapseAll : ViewMenuAction()
     object BulkPlace : ViewMenuAction()
@@ -55,23 +54,26 @@ object ViewMenu {
 
     const val SORT = "並び順"
     const val DONE = "完了したタスク"
-    const val NARROW = "絞り込みとタブ"
-    const val COUNT = "数える"
+    const val SHOW = "表示"
+    const val PLACE = "配置"
     const val BULK = "まとめて操作"
 
     /**
-     * 上から「並び順」「完了したタスク」「絞り込みとタブ」「まとめて操作」の4節。
+     * 上から「並び順」「完了したタスク」「表示」「配置」「まとめて操作」の5節。
      *
-     * 前の2つは選択肢、後ろの2つは操作。**選ぶ行と押す行を混ぜない**ように分けてある。
+     * 前の2つは選択肢、後ろの3つは操作。**選ぶ行と押す行を混ぜない**ように分けてある。
+     * 絞り込みはメニューから外して一覧の上のチップに出した（掛け合わせるには常に見えている方がいい）。
      */
     fun rows(
         sort: TaskSort,
         done: DoneMode,
-        tabSource: TabSource,
-        tagFilterCount: Int,
-        hideGrouped: Boolean = false,
         statsLabel: String = "",
-        groupsLast: Boolean = false
+        groupsLast: Boolean = false,
+        showNow: Boolean = true,
+        /** 一覧をいま絞り込んでいるか。絞っていないと「この条件だけ配置」は意味が無い */
+        filtering: Boolean = false,
+        /** 配置の対象を絞っているか */
+        placeFiltered: Boolean = false
     ): List<ViewMenuRow> {
         val rows = ArrayList<ViewMenuRow>()
 
@@ -86,44 +88,35 @@ object ViewMenu {
             rows.add(ViewMenuRow.Choice(ViewMenuAction.Done(it), it.label, it == done))
         }
 
-        rows.add(ViewMenuRow.Section(NARROW))
+        rows.add(ViewMenuRow.Section(SHOW))
         rows.add(
             ViewMenuRow.Action(
-                ViewMenuAction.TagFilter, "タグで絞り込む",
-                value = if (tagFilterCount <= 0) "なし" else "${tagFilterCount}個",
-                opensDialog = true
+                ViewMenuAction.ShowNow, "いまやることを上に出す",
+                value = if (showNow) "出す" else "出さない"
             )
         )
         rows.add(
             ViewMenuRow.Action(
-                ViewMenuAction.TabSource, "横に並べるタブ",
-                value = tabSource.label, opensDialog = true
-            )
-        )
-        // タブを長押ししても開ける。メニューにも置くのは、長押しに気付かない人のため
-        if (tabSource != dev.togar.dynasched.ui.TabSource.NONE) {
-            rows.add(
-                ViewMenuRow.Action(ViewMenuAction.TabOrder, "タブの並びを変える", opensDialog = true)
-            )
-        }
-
-        rows.add(
-            ViewMenuRow.Action(
-                ViewMenuAction.HideGrouped, "「すべて」からグループを外す",
-                value = if (hideGrouped) "外す" else "出す"
-            )
-        )
-        rows.add(
-            ViewMenuRow.Action(
-                ViewMenuAction.GroupsLast, "「すべて」でグループを下に回す",
+                ViewMenuAction.GroupsLast, "グループを下に回す",
                 value = if (groupsLast) "下に回す" else "そのまま"
             )
         )
-
-        rows.add(ViewMenuRow.Section(COUNT))
         rows.add(
             ViewMenuRow.Action(ViewMenuAction.StatsSpan, "済んだ数・増えた数",
                 value = statsLabel, opensDialog = true)
+        )
+
+        rows.add(ViewMenuRow.Section(PLACE))
+        if (filtering) {
+            rows.add(
+                ViewMenuRow.Action(ViewMenuAction.PlaceFiltered, "いまの絞り込みだけ配置する", opensDialog = true)
+            )
+        }
+        rows.add(
+            ViewMenuRow.Action(
+                ViewMenuAction.PlaceAll, "全部のタスクを配置する",
+                value = if (placeFiltered) "絞っている" else "全部"
+            )
         )
 
         rows.add(ViewMenuRow.Section(BULK))

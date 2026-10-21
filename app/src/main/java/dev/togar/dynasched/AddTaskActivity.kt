@@ -17,6 +17,9 @@ import dev.togar.dynasched.ui.LabeledSlider
 /**
  * タスク追加画面（Googleカレンダー風）。名前・必要時間・場所・優先度を入力。
  * parent_id を intent で渡すと子タスクとして追加する。
+ *
+ * 「繰り返す」を選ぶと習慣として保存する（決まった日にタスクを1件ずつ作る）。
+ * 習慣は最上位にしか作らないので、子タスクを足す時は出さない。
  */
 class AddTaskActivity : AppCompatActivity() {
 
@@ -25,6 +28,8 @@ class AddTaskActivity : AppCompatActivity() {
         const val EXTRA_PARENT_NAME = "parent_name"
         /** 最初に選んでおく場所（「場所ごと」のタブから足した時） */
         const val EXTRA_LOCATION = "location"
+        /** 最初から「毎日」にしておく（習慣で絞り込んでいる時に足した） */
+        const val EXTRA_REPEAT = "repeat"
     }
 
     // 場所: 表示ラベル → 値。場所は設定で増やせるので開くたびに作る
@@ -34,6 +39,11 @@ class AddTaskActivity : AppCompatActivity() {
     // 優先度: 表示ラベル → 値
     private val priorityValues = arrayOf(3, 5, 8)
     private val priorityLabels = arrayOf("低", "中", "高")
+
+    /** 設定の「文字の大きさ」を効かせる */
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(dev.togar.dynasched.FontScale.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,6 +98,18 @@ class AddTaskActivity : AppCompatActivity() {
         )
         noteParent.addView(tagInput, noteParent.indexOfChild(noteInput))
 
+        val isChild = parentId != null && parentId >= 0
+        val repeat = dev.togar.dynasched.ui.RepeatPickerView(
+            this, if (intent.getBooleanExtra(EXTRA_REPEAT, false)) "daily" else null
+        )
+        if (!isChild) {
+            noteParent.addView(
+                TextView(this).apply { text = "繰り返す"; textSize = 12f },
+                noteParent.indexOfChild(noteInput)
+            )
+            noteParent.addView(repeat, noteParent.indexOfChild(noteInput))
+        }
+
         // 子タスクを足す時は、**親と同じ設定で始める**。
         // グループ内のタスクは場所も優先度も揃っているのが普通で、
         // 毎回入れ直させると結局そのまま既定値で入って設定が形骸化する。
@@ -114,16 +136,35 @@ class AddTaskActivity : AppCompatActivity() {
             val note = noteInput.text.toString().trim()
             val color = dev.togar.dynasched.api.CalColor.idAt(colorPalette.selectedIndex)
 
+            val kind = if (isChild) null else repeat.kind
+            repeat.problem()?.takeIf { kind != null }?.let {
+                Toast.makeText(this, it, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
             saveButton.isEnabled = false
             val ctx = applicationContext
-            val pid = if (parentId != null && parentId >= 0) parentId else null
+            val pid = if (isChild) parentId else null
             Api.async(
                 work = {
-                    Repo.current(ctx)
-                        .addHobby(ctx, name, pid, total, priority, location, note, color, tagInput.value)
+                    val repo = Repo.current(ctx)
+                    if (kind == null) {
+                        repo.addHobby(ctx, name, pid, total, priority, location, note, color, tagInput.value)
+                    } else {
+                        repo.saveRoutine(ctx, dev.togar.dynasched.data.Routine(
+                            name = name, kind = kind, weekdays = repeat.weekdays,
+                            dayOfMonth = repeat.dayOfMonth, durationMinutes = maxOf(5, total),
+                            priority = priority, location = location, color = color,
+                            tags = tagInput.value
+                        ))
+                        // 今日が当たる日なら、すぐ一覧に出す
+                        if (repo.generateRoutines(ctx) > 0) {
+                            dev.togar.dynasched.widget.SuggestWidgetProvider.updateAll(ctx)
+                        }
+                    }
                 },
                 onSuccess = {
-                    Toast.makeText(this, "追加しました", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, if (kind == null) "追加しました" else "習慣にしました", Toast.LENGTH_SHORT).show()
                     finish()
                 },
                 onError = { e ->

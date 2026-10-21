@@ -78,6 +78,11 @@ class SetupActivity : AppCompatActivity() {
         refresh()
     }
 
+    /** 設定の「文字の大きさ」を効かせる */
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(dev.togar.dynasched.FontScale.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()

@@ -123,6 +123,13 @@ object Prefs {
 
     // ---- 単発タスク画面の見せ方 ----
 
+    /** 文字の大きさ（端末の設定に掛ける倍率を百分率で）。[FontScale] が読む。控えに入れるので整数で持つ */
+    fun fontPercent(ctx: Context): Int = sp(ctx).getInt("font_scale", 100)
+
+    fun setFontPercent(ctx: Context, percent: Int) {
+        sp(ctx).edit().putInt("font_scale", percent).apply()
+    }
+
     /** 並び順（TaskSort の名前で持つ） */
     fun taskSort(ctx: Context): String = sp(ctx).getString("task_sort", "MANUAL") ?: "MANUAL"
 
@@ -254,34 +261,43 @@ object Prefs {
         sp(ctx).edit().putBoolean("help_shown", shown).apply()
     }
 
-    /** タブの中身（TabSource の名前）。既定はタブを出さない */
-    fun taskTabSource(ctx: Context): String = sp(ctx).getString("task_tab_source", "NONE") ?: "NONE"
-
-    fun setTaskTabSource(ctx: Context, name: String) {
-        sp(ctx).edit().putString("task_tab_source", name).apply()
+    /**
+     * タスク一覧の絞り込み（[dev.togar.dynasched.ui.TaskFilter] の JSON）。
+     * 画面を離れて戻っても同じ絞り込みのままにする。
+     * 前の版の「タグで絞り込む」が残っていれば、それを引き継ぐ
+     */
+    fun taskFilter(ctx: Context): dev.togar.dynasched.ui.TaskFilter {
+        val p = sp(ctx)
+        if (!p.contains("task_filter")) {
+            val old = p.getStringSet("task_tag_filter", emptySet()).orEmpty()
+            return dev.togar.dynasched.ui.TaskFilter(tags = old)
+        }
+        return dev.togar.dynasched.ui.TaskFilter.decode(p.getString("task_filter", ""))
     }
 
-    /** 選んでいるタブ。画面を離れて戻っても同じ場所に居られるように覚える */
-    fun taskTab(ctx: Context): String = sp(ctx).getString("task_tab", "") ?: ""
-
-    fun setTaskTab(ctx: Context, key: String) {
-        sp(ctx).edit().putString("task_tab", key).apply()
+    fun setTaskFilter(ctx: Context, filter: dev.togar.dynasched.ui.TaskFilter) {
+        sp(ctx).edit().putString("task_filter", filter.encode()).apply()
     }
 
-    /** タブの左右の並び（タブのキーを並べたもの）。決めていなければ空 */
-    fun taskTabOrder(ctx: Context): List<String> =
-        (sp(ctx).getString("task_tab_order", "") ?: "").split('\n').filter { it.isNotEmpty() }
-
-    fun setTaskTabOrder(ctx: Context, keys: List<String>) {
-        sp(ctx).edit().putString("task_tab_order", keys.joinToString("\n")).apply()
+    /**
+     * 配置の対象。null なら全部のタスクを置く。
+     * 毎朝の自動配置にも効かせるので覚えておく（その場限りだと翌朝に黙って元へ戻る）
+     */
+    fun placeFilter(ctx: Context): dev.togar.dynasched.ui.TaskFilter? {
+        val raw = sp(ctx).getString("place_filter", "") ?: ""
+        if (raw.isEmpty()) return null
+        return dev.togar.dynasched.ui.TaskFilter.decode(raw).takeUnless { it.isEmpty }
     }
 
-    /** 一覧を絞り込んでいるタグ。空なら絞らない */
-    fun tagFilter(ctx: Context): Set<String> =
-        sp(ctx).getStringSet("task_tag_filter", emptySet()).orEmpty()
+    fun setPlaceFilter(ctx: Context, filter: dev.togar.dynasched.ui.TaskFilter?) {
+        sp(ctx).edit().putString("place_filter", filter?.takeUnless { it.isEmpty }?.encode() ?: "").apply()
+    }
 
-    fun setTagFilter(ctx: Context, tags: Set<String>) {
-        sp(ctx).edit().putStringSet("task_tag_filter", tags).apply()
+    /** タスク画面の上に「いまやること」を出すか */
+    fun taskShowNow(ctx: Context): Boolean = sp(ctx).getBoolean("task_show_now", true)
+
+    fun setTaskShowNow(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("task_show_now", on).apply()
     }
 
     /** 折りたたんでいる親タスクのID */
@@ -291,17 +307,6 @@ object Prefs {
 
     fun setCollapsed(ctx: Context, ids: Set<Long>) {
         sp(ctx).edit().putStringSet("task_collapsed", ids.map { it.toString() }.toSet()).apply()
-    }
-
-    /**
-     * 「すべて」タブから、タブになっている塊を外すか。
-     * 塊は自分のタブで見られるので、すべてにも出すと二度見ることになる。
-     */
-    fun taskAllHidesGrouped(ctx: Context): Boolean =
-        sp(ctx).getBoolean("task_all_hides_grouped", false)
-
-    fun setTaskAllHidesGrouped(ctx: Context, on: Boolean) {
-        sp(ctx).edit().putBoolean("task_all_hides_grouped", on).apply()
     }
 
     /** 片付いた数・増えた数を一覧の上に出すか */

@@ -39,6 +39,11 @@ class MainActivity : AppCompatActivity(), dev.togar.dynasched.feedback.FeedbackB
     private val requestNotif =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* 結果は問わない */ }
 
+    /** 設定の「文字の大きさ」を効かせる */
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(dev.togar.dynasched.FontScale.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -62,7 +67,6 @@ class MainActivity : AppCompatActivity(), dev.togar.dynasched.feedback.FeedbackB
             val fragment: Fragment = when (item.itemId) {
                 R.id.nav_today -> dev.togar.dynasched.ui.CalendarFragment()
                 R.id.nav_single -> HobbyFragment()
-                R.id.nav_routine -> dev.togar.dynasched.ui.RoutineFragment()
                 R.id.nav_material -> MaterialFragment()
                 R.id.nav_settings -> SettingsFragment()
                 else -> dev.togar.dynasched.ui.CalendarFragment()
@@ -81,10 +85,15 @@ class MainActivity : AppCompatActivity(), dev.togar.dynasched.feedback.FeedbackB
         }
 
         if (savedInstanceState == null) {
+            // カレンダーは最初から選ばれている。selectedItemId に入れても届くのは
+            // 「再選択」の方で、上の選択の受け手は呼ばれない（＝起動直後が真っ白になる）。
+            // 中身はここで自分で出す
             nav.selectedItemId = R.id.nav_today
+            showFragment(dev.togar.dynasched.ui.CalendarFragment())
             if (intent?.getBooleanExtra(EXTRA_SHOW_FREE_TIME, false) == true) {
                 FreeTimeDialog.show(this)
             }
+            dev.togar.dynasched.ui.DoTaskDialog.handle(this, intent)  // ドパチルの警告画面から
         }
     }
 
@@ -112,6 +121,7 @@ class MainActivity : AppCompatActivity(), dev.togar.dynasched.feedback.FeedbackB
         if (intent.getBooleanExtra(EXTRA_SHOW_FREE_TIME, false)) {
             FreeTimeDialog.show(this)
         }
+        dev.togar.dynasched.ui.DoTaskDialog.handle(this, intent)
     }
 
     /**

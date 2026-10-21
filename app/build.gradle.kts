@@ -50,8 +50,8 @@ android {
         applicationId = "dev.togar.dynasched"
         minSdk = 26
         targetSdk = 34
-        versionCode = 49
-        versionName = "1.1"
+        versionCode = 50
+        versionName = "1.2"
         // 更新の確認先。GitHubの dist ブランチに最新版だけを置いてある。
         // サーバーは畳んだので、通信はここ1本だけ。
         buildConfigField(

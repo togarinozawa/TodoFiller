@@ -67,10 +67,8 @@ object FreeTimeDialog {
         // 次の予定までの時間を初期値にする（そのまま押せば済むように）。
         // ただし**就寝時刻を越える提案はしない**。越えて出すと、寝る時間を削る前提の
         // 予定を毎回すすめることになる。
-        val untilBed = minutesUntilBedtime(ctx)
-        val initial = (Prefs.cachedEvents(ctx)
-            ?.let { ScheduledEvent.freeMinutesUntilNext(ScheduledEvent.fromJsonArray(it)) }
-            ?: 30).let { if (untilBed in 1 until it) untilBed else it }
+        val untilBed = dev.togar.dynasched.data.NowTasks.minutesUntilBedtime(ctx)
+        val initial = dev.togar.dynasched.data.NowTasks.availableMinutes(ctx)
         val duration = DurationPickerView(activity, initial)
         root.addView(duration)
 
@@ -104,19 +102,12 @@ object FreeTimeDialog {
                 val loc = places.getOrNull(locGroup.checkedRadioButtonId - 1)?.id
                     ?: dev.togar.dynasched.Places.HOME
                 val raw = duration.totalMinutes.let { if (it <= 0) 30 else it }
-                val cap = minutesUntilBedtime(ctx)
+                val cap = dev.togar.dynasched.data.NowTasks.minutesUntilBedtime(ctx)
                 val min = if (cap in 1 until raw) cap else raw
                 Prefs.setWidgetLoc(ctx, loc)   // ウィジェットと設定を揃えておく
                 fetch(activity, loc, min, chosen)
             }
             .show()
-    }
-
-    /** 就寝時刻まであと何分か。すでに過ぎていれば 0 */
-    private fun minutesUntilBedtime(ctx: android.content.Context): Int {
-        val now = java.util.Calendar.getInstance()
-        val nowMin = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)
-        return (Prefs.bedtimeMinutes(ctx) - nowMin).coerceAtLeast(0)
     }
 
     private fun tagButtonLabel(tags: Set<String>): String =
@@ -192,7 +183,7 @@ object FreeTimeDialog {
      * やることを決めたら、終わっているはずの時刻に確認通知を予約する。
      * 決めた時点では何も記録しない。「やった」と言うのは終わってからでいい。
      */
-    private fun decide(activity: Activity, item: SuggestItem, availableMin: Int) {
+    fun decide(activity: Activity, item: SuggestItem, availableMin: Int) {
         val ctx = activity.applicationContext
         val minutes = minOf(item.minutes, availableMin).coerceAtLeast(5)
         val at = System.currentTimeMillis() + minutes * 60_000L

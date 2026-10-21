@@ -90,39 +90,55 @@ object FeedbackDialog {
             .setView(root)
             .setPositiveButton("送る", null)   // 空の時は閉じないよう後で差し替える
             .setNegativeButton("やめる", null)
+            // 本人の端末だけ。友達には出さない（Prefs.ownerMode）
+            .apply { if (Prefs.ownerMode(ctx)) setNeutralButton("Claudeに送る", null) }
             .create()
         var sent = false
         dialog.setOnDismissListener {
             // 送らずに閉じた時は書きかけを残す
             if (!sent) Prefs.setFeedbackDraft(ctx, kind().name, input.text.toString())
         }
+        /** 送る画面を開けたら済んだことにする。開けなければ false */
+        fun trySend(open: (String) -> Intent, missing: String): Boolean {
+            val text = input.text.toString()
+            if (!Feedback.canSend(text)) {
+                input.error = "一言だけでも書いてください"
+                return false
+            }
+            val k = kind()
+            val body = Feedback.compose(k, text, env(), if (skipCrash.isChecked) null else crash)
+            try {
+                activity.startActivity(open(body))
+            } catch (e: Exception) {
+                Toast.makeText(ctx, missing, Toast.LENGTH_LONG).show()
+                return false
+            }
+            // 送る画面を開いた時点で済んだことにする。実際に送ったかは分からないが、
+            // 帯を赤いままにして何度もせがむよりよい
+            sent = true
+            Prefs.setFeedbackDraft(ctx, "", "")
+            crash?.let { Prefs.setCrashReportedAt(ctx, it.at) }
+            dialog.dismiss()
+            onSent()
+            return true
+        }
+
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                trySend({ body ->
+                    Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_SUBJECT, "スキマス: ${kind().label}")
+                        putExtra(Intent.EXTRA_TEXT, body)
+                    }, "送り先を選ぶ（作者のLINEなど）")
+                }, "送れるアプリが見つかりませんでした")
+            }
+            // 入力済みの Issue 画面を開く。あとは「Submit」を押すだけ
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
                 val text = input.text.toString()
-                if (!Feedback.canSend(text)) {
-                    input.error = "一言だけでも書いてください"
-                    return@setOnClickListener
-                }
-                val k = kind()
-                val body = Feedback.compose(k, text, env(), if (skipCrash.isChecked) null else crash)
-                val send = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_SUBJECT, "スキマス: ${k.label}")
-                    putExtra(Intent.EXTRA_TEXT, body)
-                }
-                try {
-                    activity.startActivity(Intent.createChooser(send, "送り先を選ぶ（作者のLINEなど）"))
-                } catch (e: Exception) {
-                    Toast.makeText(ctx, "送れるアプリが見つかりませんでした", Toast.LENGTH_LONG).show()
-                    return@setOnClickListener
-                }
-                // 共有シートを開いた時点で済んだことにする。実際に送ったかは分からないが、
-                // 帯を赤いままにして何度もせがむよりよい
-                sent = true
-                Prefs.setFeedbackDraft(ctx, "", "")
-                crash?.let { Prefs.setCrashReportedAt(ctx, it.at) }
-                dialog.dismiss()
-                onSent()
+                trySend({ body ->
+                    Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Feedback.issueUrl(kind(), text, body)))
+                }, "ブラウザが見つかりませんでした")
             }
         }
         dialog.show()

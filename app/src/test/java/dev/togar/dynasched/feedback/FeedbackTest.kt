@@ -45,4 +45,20 @@ class FeedbackTest {
         assertEquals(Feedback.Kind.BUG, Feedback.Kind.from("???"))
         assertEquals(Feedback.Kind.CHANGE, Feedback.Kind.from("CHANGE"))
     }
+
+    @Test
+    fun `Claudeへの送り先は入力済みのIssue画面`() {
+        val url = Feedback.issueUrl(Feedback.Kind.BUG, "カレンダーが出ない\n2行目", "本文 a&b")
+        assertTrue(url.startsWith("https://github.com/${Feedback.ISSUE_REPO}/issues/new?title="))
+        val q = java.net.URLDecoder.decode(url.substringAfter("?"), "UTF-8")
+        assertTrue(q.contains("title=[不具合] カレンダーが出ない&"))
+        // & が本文の区切りと混ざらない
+        assertTrue(url.contains("body=%E6%9C%AC%E6%96%87%20a%26b"))
+    }
+
+    @Test
+    fun `長すぎる本文は切る`() {
+        val url = Feedback.issueUrl(Feedback.Kind.WANT, "x", "あ".repeat(20000))
+        assertTrue(java.net.URLDecoder.decode(url, "UTF-8").endsWith("（長いので切りました）"))
+    }
 }

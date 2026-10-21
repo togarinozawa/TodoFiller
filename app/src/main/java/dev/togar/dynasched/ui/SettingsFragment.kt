@@ -54,7 +54,9 @@ class SettingsFragment : Fragment() {
                 wake + if (Prefs.bedtimeNotice(ctx)) "・就寝時に通知" else "") {
                 open(TimeSettingsPage())
             },
-            Entry("予定の自動配置", "${Prefs.fillDays(ctx)}日先まで埋める・カレンダーの確認") {
+            Entry("予定の自動配置", "${Prefs.fillDays(ctx)}日先まで埋める・カレンダーの確認" +
+                // 絞っていると置かれないタスクが出る。気付けるようにここにも出す
+                if (Prefs.placeFilter(ctx) != null) "・タスクは絞り込みの分だけ" else "") {
                 open(ScheduleSettingsPage())
             },
             // Notion同期は本人用。友達には出さない（Prefs.ownerMode）
@@ -62,6 +64,7 @@ class SettingsFragment : Fragment() {
             else Entry("Notionと同期", if (Prefs.notionReady(ctx)) "接続済み" else "未接続") {
                 open(NotionSettingsPage())
             },
+            Entry("文字の大きさ", dev.togar.dynasched.FontScale.label(ctx)) { pickFontScale() },
             Entry("ウィジェット", "置いたウィジェットごとの設定") { showWidgetList() },
             Entry("バックアップ", "書き出し・復元") { open(BackupSettingsPage()) },
             Entry("使い方", "カレンダーの印の付け方・各画面の説明") {
@@ -105,6 +108,23 @@ class SettingsFragment : Fragment() {
      * 詳細ページへ進む。**下のタブと同じ入れ物に積む**ので、戻るボタンで目次に戻れる。
      * 別のタブへ移る時は MainActivity が積んだ分を払う。
      */
+    /** 選んだらすぐ画面を作り直して見せる。文字の大きさは画面を作る時にしか効かない */
+    private fun pickFontScale() {
+        val ctx = requireContext()
+        val choices = dev.togar.dynasched.FontScale.CHOICES
+        val now = choices.indexOfFirst { it.percent == Prefs.fontPercent(ctx) }
+        androidx.appcompat.app.AlertDialog.Builder(ctx)
+            .setTitle("文字の大きさ")
+            .setSingleChoiceItems(choices.map { it.label }.toTypedArray(), now) { d, which ->
+                d.dismiss()
+                if (which == now) return@setSingleChoiceItems
+                Prefs.setFontPercent(ctx, choices[which].percent)
+                requireActivity().recreate()
+            }
+            .setNegativeButton("やめる", null)
+            .show()
+    }
+
     private fun open(page: Fragment) {
         parentFragmentManager.beginTransaction()
             .replace(R.id.container, page)

@@ -90,7 +90,12 @@ class TimeGridView @JvmOverloads constructor(
     private val bandGap = 12 * d
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11 * d }
+    /** 文字は sp で。dp だと設定の「文字の大きさ」が効かない */
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = android.util.TypedValue.applyDimension(
+            android.util.TypedValue.COMPLEX_UNIT_SP, 11f, resources.displayMetrics
+        )
+    }
 
     private val colPrimary = ContextCompat.getColor(ctx, R.color.primary)
     private val colAccent = ContextCompat.getColor(ctx, R.color.accent_goal)

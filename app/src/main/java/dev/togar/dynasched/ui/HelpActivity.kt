@@ -24,6 +24,11 @@ class HelpActivity : AppCompatActivity() {
 
     private var pages: List<HelpPage> = emptyList()
 
+    /** 設定の「文字の大きさ」を効かせる */
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(dev.togar.dynasched.FontScale.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_help)

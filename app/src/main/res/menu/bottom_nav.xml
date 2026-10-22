@@ -9,6 +9,10 @@
         android:id="@+id/nav_single"
         android:title="タスク"/>
     <item
+        android:icon="@drawable/ic_now"
+        android:id="@+id/nav_now"
+        android:title="いまやる"/>
+    <item
         android:icon="@drawable/ic_goal"
         android:id="@+id/nav_material"
         android:title="予定"/>

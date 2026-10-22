@@ -24,14 +24,55 @@ import dev.togar.dynasched.widget.SuggestWidgetProvider
 class PlacesSettingsPage : SettingsPage("場所", R.layout.settings_places) {
 
     private lateinit var list: LinearLayout
+    private lateinit var weekdayList: LinearLayout
 
     override fun setup(root: View) {
         list = root.findViewById(R.id.placeList)
+        weekdayList = root.findViewById(R.id.weekdayList)
         root.findViewById<Button>(R.id.addPlaceButton).setOnClickListener { edit(null) }
         render()
     }
 
+    /** 曜日ごとのいつもの場所。押すと場所を選ぶ */
+    private fun renderWeekdays() {
+        val ctx = requireContext()
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        val places = Places.all(ctx)
+        val chosen = Prefs.weekdayPlaces(ctx)
+        weekdayList.removeAllViews()
+        for (wd in 0 until 7) {
+            val id = chosen[wd]
+            val name = places.firstOrNull { it.id == id }?.name ?: "決めない"
+            weekdayList.addView(TextView(ctx).apply {
+                text = "${dev.togar.dynasched.data.Routines.WEEKDAY_NAMES[wd]}曜日　$name"
+                textSize = 15f
+                setTextColor(ctx.getColor(if (id.isEmpty()) R.color.on_bg_dim else R.color.on_bg))
+                setPadding(dp(16), dp(10), dp(16), dp(10))
+                setOnClickListener { pickWeekday(wd) }
+            })
+        }
+    }
+
+    private fun pickWeekday(wd: Int) {
+        val ctx = requireContext()
+        val places = Places.all(ctx)
+        val ids = listOf("") + places.map { it.id }
+        val labels = listOf("決めない") + places.map { it.name }
+        val cur = Prefs.weekdayPlaces(ctx)
+        AlertDialog.Builder(ctx)
+            .setTitle("${dev.togar.dynasched.data.Routines.WEEKDAY_NAMES[wd]}曜日のいつもの場所")
+            .setSingleChoiceItems(labels.toTypedArray(), ids.indexOf(cur[wd]).coerceAtLeast(0)) { d, i ->
+                d.dismiss()
+                Prefs.setWeekdayPlaces(ctx, cur.toMutableList().also { it[wd] = ids[i] })
+                renderWeekdays()
+            }
+            .setNegativeButton("やめる", null)
+            .show()
+    }
+
     private fun render() {
+        renderWeekdays()
         val ctx = requireContext()
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()

@@ -45,21 +45,31 @@ object DoTaskDialog {
             return
         }
         // 警告画面で見てから押すまでに片付いている・消えていることがある
-        Api.async({ Repo.current(ctx).getHobbyItem(ctx, given.id) }, { item ->
+        Api.async({
+            val all = Repo.current(ctx).getHobby(ctx)
+            all.firstOrNull { it.id == given.id } to NowTasks.parentPath(all, given.id)
+        }, { (item, parent) ->
             if (activity.isFinishing) return@async
             when {
                 item == null -> Toast.makeText(activity, "そのタスクはもうありません", Toast.LENGTH_SHORT).show()
                 item.isCompleted -> Toast.makeText(activity, "「${item.name}」はもう片付いています", Toast.LENGTH_SHORT).show()
                 else -> ask(activity, given.copy(title = item.name, minutes = item.durationMinutes,
-                    priority = item.priority), canComplete = true)
+                    priority = item.priority), canComplete = true, parent = parent, note = item.note)
             }
         }, { })
     }
 
-    private fun ask(activity: Activity, item: SuggestItem, canComplete: Boolean) {
+    private fun ask(
+        activity: Activity, item: SuggestItem, canComplete: Boolean, parent: String = "", note: String = ""
+    ) {
+        val msg = buildString {
+            if (parent.isNotEmpty()) append(parent).append(" ›\n")
+            append(item.title).append("（").append(item.minutes).append("分）")
+            if (note.isNotBlank()) append("\n\n📝 ").append(note.trim())
+        }
         val b = AlertDialog.Builder(activity)
             .setTitle("いまやること")
-            .setMessage("${item.title}（${item.minutes}分）")
+            .setMessage(msg)
             .setPositiveButton("やる") { _, _ ->
                 FreeTimeDialog.decide(activity, item, NowTasks.availableMinutes(activity).coerceAtLeast(item.minutes))
             }

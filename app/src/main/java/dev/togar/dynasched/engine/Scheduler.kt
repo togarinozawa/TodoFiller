@@ -3,6 +3,7 @@ package dev.togar.dynasched.engine
 import dev.togar.dynasched.calendar.AvailabilityWindow
 import dev.togar.dynasched.calendar.BusyBlock
 import dev.togar.dynasched.calendar.ExamPeriod
+import dev.togar.dynasched.data.Want
 import java.util.Calendar
 import java.util.Locale
 
@@ -36,7 +37,10 @@ data class HobbyRow(
     /** 塊（親）。まとめる・散らすの判定に使う */
     val parentId: Long? = null,
     /** 作った日時。古い順・新しい順に使う。古い行は空 */
-    val createdAt: String = ""
+    val createdAt: String = "",
+    /** やる日（yyyy-MM-dd）と強さ。[Want] */
+    val wantDate: String = "",
+    val wantLevel: Int = 0
 )
 
 /** 単発タスクを置く順 */
@@ -301,8 +305,47 @@ object Scheduler {
                     cursor += chunk
                 }
             }
+            placeMustOutsideWindows(dayStr, if (i == 0) nowMin + 5 else 0, busy, pool, out, wakeStart, wakeEnd)
         }
         return out
+    }
+
+    /**
+     * 「絶対」で今日に決めたのに枠へ入らなかったタスクを、枠の外の空き時間へ置く。
+     * 起きている間で、カレンダーの予定とも、もう置いた物とも重ならない所。
+     * それでも入らなければ置かない（次の日に、いちばん先の物として回る）。
+     */
+    private fun placeMustOutsideWindows(
+        dayStr: String, fromMin: Int, busy: List<BusyBlock>,
+        pool: MutableList<Pair<HobbyRow, Boolean>>, out: MutableList<PlacedEvent>,
+        wakeStart: Int, wakeEnd: Int
+    ) {
+        val left = pool.indices.filter { i ->
+            val (t, placed) = pool[i]
+            !placed && Want.rankOn(t.wantDate, t.wantLevel, dayStr) == Want.MUST
+        }
+        if (left.isEmpty()) return
+        val start = maxOf(wakeStart, fromMin)
+        if (wakeEnd - start < MIN_BLOCK) return
+        val taken = ArrayList<IntRange>()
+        taken.addAll(busy.mapNotNull { clipToDay(it.start, it.end, dayStr) })
+        taken.addAll(out.filter { it.start.startsWith(dayStr) }.map {
+            timeToMin(it.start.substring(11, 16))..timeToMin(it.end.substring(11, 16))
+        })
+        for (idx in left) {
+            val t = pool[idx].first
+            val g = subtractBusy(start, wakeEnd, taken)
+                .firstOrNull { it.last - it.first >= t.durationMinutes } ?: continue
+            val end = g.first + t.durationMinutes
+            out.add(PlacedEvent(
+                title = t.name,
+                start = "${dayStr}T${minToTime(g.first)}:00",
+                end = "${dayStr}T${minToTime(end)}:00",
+                eventType = "hobby", hobbyTaskId = t.id, materialId = null
+            ))
+            pool[idx] = t to true
+            taken.add(g.first..end)
+        }
     }
 
     private class Picked(
@@ -376,15 +419,18 @@ object Scheduler {
         order: TaskOrder = TaskOrder.OLDEST, grouping: Grouping = Grouping.FREE,
         state: PlacementState = PlacementState()
     ): Picked? {
-        // 1) 単発タスクを最優先（テスト期間中は出さない）。
-        //    塊の都合（まとめる・散らす）を先に見て、同じなら決めた順（古い順など）
-        if (!examMode) {
+        // 1) 単発タスクを最優先（テスト期間中は「絶対」でその日に決めた物だけ）。
+        //    やる日を決めた物 → 塊の都合（まとめる・散らす） → 決めた順（古い順など）
+        run {
             val byOrder = hobbyOrder(order)
+            fun want(t: HobbyRow) = Want.rankOn(t.wantDate, t.wantLevel, dayStr)
             val bestIdx = pool.indices.filter { i ->
                 val (t, placed) = pool[i]
-                !placed && locMatch(t.location, location) && t.durationMinutes <= remaining
+                !placed && locMatch(t.location, location) && t.durationMinutes <= remaining &&
+                    Want.allowedOn(t.wantDate, dayStr) && (!examMode || want(t) == Want.MUST)
             }.minWithOrNull(
-                compareByDescending<Int> { hobbyRank(pool[it].first, grouping, state) }
+                compareByDescending<Int> { want(pool[it].first) }
+                    .thenByDescending { hobbyRank(pool[it].first, grouping, state) }
                     .thenComparing({ pool[it].first }, byOrder)
             ) ?: -1
             if (bestIdx >= 0) {

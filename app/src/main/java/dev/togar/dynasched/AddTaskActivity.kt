@@ -36,9 +36,6 @@ class AddTaskActivity : AppCompatActivity() {
     private val locationChoices by lazy { Places.taskChoices(Places.all(this)) }
     private val locationValues by lazy { locationChoices.map { it.first } }
     private val locationLabels by lazy { locationChoices.map { it.second } }
-    // 優先度: 表示ラベル → 値
-    private val priorityValues = arrayOf(3, 5, 8)
-    private val priorityLabels = arrayOf("低", "中", "高")
 
     /** 設定の「文字の大きさ」を効かせる */
     override fun attachBaseContext(newBase: android.content.Context) {
@@ -83,9 +80,8 @@ class AddTaskActivity : AppCompatActivity() {
         }
         // 優先度はスワイプで選ぶ（スピナーを隠して同じ位置にスライダーを差し込む）
         prioritySpinner.visibility = android.view.View.GONE
-        val prioritySlider = LabeledSlider(this, priorityValues.toList(), 5) { v ->
-            priorityLabels[priorityValues.toList().indexOf(v).coerceIn(0, 2)]
-        }
+        // 段は設定の「優先度」で決めたもの。真ん中あたりから始める
+        val prioritySlider = dev.togar.dynasched.ui.PriorityPicker(this, 5)
         val prioParent = prioritySpinner.parent as android.view.ViewGroup
         prioParent.addView(prioritySlider, prioParent.indexOfChild(prioritySpinner))
 

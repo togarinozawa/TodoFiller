@@ -17,16 +17,17 @@ class ViewMenuTest {
     private fun rows(
         sort: TaskSort = TaskSort.MANUAL,
         done: DoneMode = DoneMode.INLINE,
-        showNow: Boolean = true,
+        doneTabs: DoneTabs = DoneTabs.END,
+        hasTabs: Boolean = true,
         filtering: Boolean = false,
         placeFiltered: Boolean = false
-    ) = ViewMenu.rows(sort, done, "7日", showNow = showNow, filtering = filtering, placeFiltered = placeFiltered)
+    ) = ViewMenu.rows(sort, done, doneTabs, hasTabs = hasTabs, filtering = filtering, placeFiltered = placeFiltered)
 
     @Test
     fun 節の順番が決まっている() {
         val titles = rows().filterIsInstance<ViewMenuRow.Section>().map { it.title }
         assertEquals(
-            listOf(ViewMenu.SORT, ViewMenu.DONE, ViewMenu.SHOW, ViewMenu.PLACE, ViewMenu.BULK),
+            listOf(ViewMenu.SORT, ViewMenu.DONE, ViewMenu.DONE_TABS, ViewMenu.SHOW, ViewMenu.PLACE, ViewMenu.BULK),
             titles
         )
     }
@@ -44,6 +45,7 @@ class ViewMenuTest {
         val doneSection = between(all, ViewMenu.DONE)
         assertTrue(sortSection.all { it is ViewMenuRow.Choice })
         assertTrue(doneSection.all { it is ViewMenuRow.Choice })
+        assertTrue(between(all, ViewMenu.DONE_TABS).all { it is ViewMenuRow.Choice })
         assertEquals(TaskSort.entries.size, sortSection.size)
         assertEquals(DoneMode.entries.size, doneSection.size)
 
@@ -71,9 +73,10 @@ class ViewMenuTest {
         val actions = rows(filtering = true).filterIsInstance<ViewMenuRow.Action>()
         assertEquals(
             listOf(
-                ViewMenuAction.ShowNow, ViewMenuAction.GroupsLast, ViewMenuAction.StatsSpan,
+                ViewMenuAction.GroupsLast, ViewMenuAction.TabOrder,
                 ViewMenuAction.PlaceFiltered, ViewMenuAction.PlaceAll,
-                ViewMenuAction.BulkPlace, ViewMenuAction.CollapseAll, ViewMenuAction.ExpandAll
+                ViewMenuAction.PickTomorrow, ViewMenuAction.BulkPlace,
+                ViewMenuAction.CollapseAll, ViewMenuAction.ExpandAll
             ),
             actions.map { it.action }
         )
@@ -92,8 +95,6 @@ class ViewMenuTest {
         // 押すたびに入れ替わる行なので、いまどちらなのかが見えないと押せない
         fun value(r: List<ViewMenuRow>, a: ViewMenuAction) =
             r.filterIsInstance<ViewMenuRow.Action>().first { it.action == a }.value
-        assertEquals("出す", value(rows(showNow = true), ViewMenuAction.ShowNow))
-        assertEquals("出さない", value(rows(showNow = false), ViewMenuAction.ShowNow))
         assertEquals("絞っている", value(rows(placeFiltered = true), ViewMenuAction.PlaceAll))
         assertEquals("全部", value(rows(placeFiltered = false), ViewMenuAction.PlaceAll))
         // 畳む・開くは状態を持たないので何も出さない
@@ -104,9 +105,15 @@ class ViewMenuTest {
     fun 次の画面が開く行にだけ印を付ける() {
         val actions = rows(filtering = true).filterIsInstance<ViewMenuRow.Action>().associateBy { it.action }
         assertTrue(actions.getValue(ViewMenuAction.PlaceFiltered).opensDialog)
-        assertTrue(actions.getValue(ViewMenuAction.StatsSpan).opensDialog)
+        assertTrue(actions.getValue(ViewMenuAction.TabOrder).opensDialog)
         assertFalse(actions.getValue(ViewMenuAction.CollapseAll).opensDialog)
-        assertFalse(actions.getValue(ViewMenuAction.ShowNow).opensDialog)
+        assertFalse(actions.getValue(ViewMenuAction.GroupsLast).opensDialog)
+    }
+
+    @Test
+    fun `タブが無ければ並べ替えの行を出さない`() {
+        val actions = rows(hasTabs = false).filterIsInstance<ViewMenuRow.Action>().map { it.action }
+        assertFalse(ViewMenuAction.TabOrder in actions)
     }
 
     @Test

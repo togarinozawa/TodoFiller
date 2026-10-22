@@ -65,13 +65,6 @@ class TaskFilterTest {
     }
 
     @Test
-    fun `古い優先度の値もどこかの段に入る`() {
-        assertEquals(8, TaskFilter.priorityBand(10))
-        assertEquals(5, TaskFilter.priorityBand(6))
-        assertEquals(3, TaskFilter.priorityBand(1))
-    }
-
-    @Test
     fun `グループで絞ると塊そのものは出さない`() {
         assertEquals(listOf(2L, 3L), ids(TaskFilter(groupId = 1L)))
         // 消えたグループで絞ったままでも、全部出る（何も出ないよりまし）

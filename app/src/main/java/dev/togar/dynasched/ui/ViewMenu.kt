@@ -40,13 +40,14 @@ sealed class ViewMenuRow {
 sealed class ViewMenuAction {
     data class Sort(val sort: TaskSort) : ViewMenuAction()
     data class Done(val mode: DoneMode) : ViewMenuAction()
+    data class DoneTab(val mode: DoneTabs) : ViewMenuAction()
     object GroupsLast : ViewMenuAction()
-    object ShowNow : ViewMenuAction()
+    object TabOrder : ViewMenuAction()
     object PlaceFiltered : ViewMenuAction()
     object PlaceAll : ViewMenuAction()
-    object StatsSpan : ViewMenuAction()
     object CollapseAll : ViewMenuAction()
     object BulkPlace : ViewMenuAction()
+    object PickTomorrow : ViewMenuAction()
     object ExpandAll : ViewMenuAction()
 }
 
@@ -54,22 +55,24 @@ object ViewMenu {
 
     const val SORT = "並び順"
     const val DONE = "完了したタスク"
+    const val DONE_TABS = "済んだグループのタブ"
     const val SHOW = "表示"
     const val PLACE = "配置"
     const val BULK = "まとめて操作"
 
     /**
-     * 上から「並び順」「完了したタスク」「表示」「配置」「まとめて操作」の5節。
+     * 上から「並び順」「完了したタスク」「済んだグループのタブ」「表示」「配置」「まとめて操作」。
      *
-     * 前の2つは選択肢、後ろの3つは操作。**選ぶ行と押す行を混ぜない**ように分けてある。
-     * 絞り込みはメニューから外して一覧の上のチップに出した（掛け合わせるには常に見えている方がいい）。
+     * 前の3つは選択肢、後ろの3つは操作。**選ぶ行と押す行を混ぜない**ように分けてある。
+     * 絞り込みはメニューから外して「絞り込み」ボタンの画面に置いた。
      */
     fun rows(
         sort: TaskSort,
         done: DoneMode,
-        statsLabel: String = "",
+        doneTabs: DoneTabs = DoneTabs.END,
         groupsLast: Boolean = false,
-        showNow: Boolean = true,
+        /** グループのタブが出ているか。出ていなければ並べ替える物が無い */
+        hasTabs: Boolean = false,
         /** 一覧をいま絞り込んでいるか。絞っていないと「この条件だけ配置」は意味が無い */
         filtering: Boolean = false,
         /** 配置の対象を絞っているか */
@@ -88,23 +91,21 @@ object ViewMenu {
             rows.add(ViewMenuRow.Choice(ViewMenuAction.Done(it), it.label, it == done))
         }
 
+        // 中が全部済んだグループのタブ。残したままだと、空のタブが並び続ける
+        rows.add(ViewMenuRow.Section(DONE_TABS))
+        DoneTabs.entries.forEach {
+            rows.add(ViewMenuRow.Choice(ViewMenuAction.DoneTab(it), it.label, it == doneTabs))
+        }
+
         rows.add(ViewMenuRow.Section(SHOW))
-        rows.add(
-            ViewMenuRow.Action(
-                ViewMenuAction.ShowNow, "いまやることを上に出す",
-                value = if (showNow) "出す" else "出さない"
-            )
-        )
         rows.add(
             ViewMenuRow.Action(
                 ViewMenuAction.GroupsLast, "グループを下に回す",
                 value = if (groupsLast) "下に回す" else "そのまま"
             )
         )
-        rows.add(
-            ViewMenuRow.Action(ViewMenuAction.StatsSpan, "済んだ数・増えた数",
-                value = statsLabel, opensDialog = true)
-        )
+        // タブを長押ししても開ける。メニューにも置くのは、長押しに気付かない人のため
+        if (hasTabs) rows.add(ViewMenuRow.Action(ViewMenuAction.TabOrder, "タブの並びを変える", opensDialog = true))
 
         rows.add(ViewMenuRow.Section(PLACE))
         if (filtering) {
@@ -120,6 +121,7 @@ object ViewMenu {
         )
 
         rows.add(ViewMenuRow.Section(BULK))
+        rows.add(ViewMenuRow.Action(ViewMenuAction.PickTomorrow, "明日やるものを選ぶ", opensDialog = true))
         rows.add(ViewMenuRow.Action(ViewMenuAction.BulkPlace, "場所をまとめて変える", opensDialog = true))
         rows.add(ViewMenuRow.Action(ViewMenuAction.CollapseAll, "すべて畳む"))
         rows.add(ViewMenuRow.Action(ViewMenuAction.ExpandAll, "すべて開く"))

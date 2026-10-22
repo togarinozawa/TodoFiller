@@ -46,7 +46,8 @@
 | `title` | string | 画面に出す名前（教材なら「数学ワーク 12問」のような形） |
 | `minutes` | int | かかる時間（分） |
 | `priority` | int | 3 / 5 / 8（低・中・高） |
-| `reason` | string | なぜこれか、の一言（「優先度 高」「予定（教材）」） |
+| `reason` | string | なぜこれか、の一言（「優先度 1（すぐやれ）」「予定（教材）」）。優先度の段の名前と目安はスキマスの設定で変わる |
+| `parent` | string | 親タスクの並び（「英語 › 長文」）。最上位なら空。**分けた子タスクは名前だけだと何の話か分からない**ので、`title` と一緒に出してください |
 
 ### `Cursor.getExtras()`
 
@@ -62,6 +63,8 @@
 ### どれが出るか
 
 スキマスのタスク画面の一番上「いまやること」と**同じ計算**です。
+「やる日」を今日に決めたタスク（「絶対」→「なるべく」の順）が先頭に来ます。
+場所はスキマスの「いまいる場所」（その日に手で選んだ場所、無ければ曜日ごとのいつもの場所）です。
 スキマスで「いまの絞り込みだけ配置する」にしていれば、その範囲のタスクだけになります
 （「いまはこれに集中する」と決めた範囲の外を勧めないため）。
 
@@ -88,7 +91,7 @@
 ```kotlin
 data class NowTask(
     val kind: String, val id: Long, val title: String,
-    val minutes: Int, val reason: String
+    val minutes: Int, val reason: String, val parent: String
 )
 
 private val NOW_URI = Uri.parse("content://dev.togar.dynasched.nowtasks/now?limit=3")
@@ -103,7 +106,9 @@ suspend fun readNowTasks(ctx: Context): List<NowTask> = withContext(Dispatchers.
                     id = c.getLong(c.getColumnIndexOrThrow("id")),
                     title = c.getString(c.getColumnIndexOrThrow("title")),
                     minutes = c.getInt(c.getColumnIndexOrThrow("minutes")),
-                    reason = c.getString(c.getColumnIndexOrThrow("reason"))
+                    reason = c.getString(c.getColumnIndexOrThrow("reason")),
+                    // 後から足した列。古いスキマスには無いので、無ければ空
+                    parent = c.getColumnIndex("parent").takeIf { it >= 0 }?.let { c.getString(it) }.orEmpty()
                 ))
             }
         } ?: emptyList()

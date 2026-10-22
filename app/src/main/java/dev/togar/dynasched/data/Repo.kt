@@ -56,6 +56,12 @@ interface Repo {
     /** 親を付け替える（子タスク化／子をやめる）。自分の子孫は親にできない */
     fun setHobbyParent(ctx: Context, id: Long, parentId: Long?)
 
+    /** やる日を決める。[date] が空か [level] が 0 なら外す（[Want]） */
+    fun setHobbyWant(ctx: Context, ids: Collection<Long>, date: String, level: Int)
+
+    /** 優先度の段を足し引きした後、タスクと習慣の数字を新しい段へ移す（[dev.togar.dynasched.Priorities.plan]） */
+    fun remapPriorities(ctx: Context, old: List<dev.togar.dynasched.PriorityLevel>, map: Map<Int, Int>)
+
     /** 優先度だけを変える（優先度順で並び替えたとき） */
     fun setHobbyPriority(ctx: Context, id: Long, priority: Int)
 

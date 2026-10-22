@@ -130,9 +130,8 @@ object FreeTimeDialog {
                     .setMultiChoiceItems(known.toTypedArray(), checked) { _, which, isChecked ->
                         if (isChecked) selected.add(known[which]) else selected.remove(known[which])
                     }
-                    .setPositiveButton("決定") { _, _ -> onPick(selected) }
-                    .setNeutralButton("全部見る") { _, _ -> onPick(emptySet()) }
-                    .setNegativeButton("やめる", null)
+                    // 押すのは1つだけ。何も選ばなければ全部（ボタンが3つだと、どれが何か迷う）
+                    .setPositiveButton("絞り込む") { _, _ -> onPick(selected) }
                     .show()
             },
             onError = { /* 絞れないだけ */ }

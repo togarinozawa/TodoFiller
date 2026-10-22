@@ -29,6 +29,31 @@
         android:text="場所を足す"
         android:textColor="@color/white" />
 
+    <!-- 曜日ごとのいつもの場所。「いまやること」「暇なとき」が今日の場所として使う -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="曜日ごとのいつもの場所"
+        android:textColor="@color/on_bg"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="「いまやること」と「暇なとき」は、この場所にいるものとして候補を出します。その日に手で場所を選べば、その日だけはそちらが優先です。"
+        android:textColor="@color/on_bg_dim"
+        android:textSize="12sp" />
+
+    <LinearLayout
+        android:id="@+id/weekdayList"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@color/surface"
+        android:orientation="vertical" />
+
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

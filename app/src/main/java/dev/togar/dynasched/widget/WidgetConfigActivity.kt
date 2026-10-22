@@ -113,8 +113,13 @@ class WidgetConfigActivity : AppCompatActivity() {
         box.addView(kindSpinner)
 
         box.addView(label("優先度"))
-        val prioValues = listOf(0, 5, 8)
-        val prioSpinner = spinner(listOf("すべて", "中以上だけ", "高だけ"), prioValues.indexOf(cfg.minPriority).coerceAtLeast(0))
+        // 段は設定の「優先度」で決めたもの。一番下の段「以上」は「すべて」と同じなので出さない
+        val levels = dev.togar.dynasched.Priorities.all(this)
+        val prioValues = listOf(0) + levels.dropLast(1).map { it.value }
+        val prioLabels = listOf("すべて") + levels.dropLast(1).mapIndexed { i, l ->
+            if (i == 0) "${l.name}だけ" else "${l.name}以上だけ"
+        }
+        val prioSpinner = spinner(prioLabels, prioValues.indexOf(cfg.minPriority).coerceAtLeast(0))
         box.addView(prioSpinner)
 
         box.addView(label("候補の行数"))

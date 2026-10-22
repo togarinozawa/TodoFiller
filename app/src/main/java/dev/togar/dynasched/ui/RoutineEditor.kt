@@ -90,11 +90,7 @@ object RoutineEditor {
         box.addView(placeSpinner)
 
         box.addView(label("優先度"))
-        val prioValues = listOf(3, 5, 8)
-        val prioNames = arrayOf("低", "中", "高")
-        val prio = LabeledSlider(ctx, prioValues, existing.priority) { v ->
-            prioNames[prioValues.indexOf(v).coerceIn(0, 2)]
-        }
+        val prio = PriorityPicker(ctx, existing.priority)
         box.addView(prio)
 
         box.addView(label("タグ"))

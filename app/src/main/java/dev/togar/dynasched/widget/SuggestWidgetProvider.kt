@@ -93,13 +93,19 @@ class SuggestWidgetProvider : AppWidgetProvider() {
             try {
                 val raw = Repo.current(ctx).getSuggestions(ctx, cfg.loc, min, n * 4, cfg.tags)
                 val items = WidgetFilter.apply(raw, cfg, n)
+                val levels = dev.togar.dynasched.Priorities.all(ctx)
                 for ((i, item) in items.withIndex()) {
                     val id = LINES.getOrNull(i) ?: break
                     val isMaterial = item.kind == "material"
                     val mark = if (isMaterial) "🎯" else "☐"
+                    // タスクの段は設定で変わるので、一番上と一番下だけ印を付ける。教材は低中高のまま
+                    val rank = dev.togar.dynasched.Priorities.rankOf(levels, item.priority)
                     val prio = when {
-                        item.priority >= 7 -> "❗"
-                        item.priority <= 3 -> "▽"
+                        isMaterial && item.priority >= 7 -> "❗"
+                        isMaterial && item.priority <= 3 -> "▽"
+                        isMaterial -> ""
+                        rank == 0 -> "❗"
+                        rank == levels.size - 1 -> "▽"
                         else -> ""
                     }
                     views.setTextViewText(id, "$mark$prio ${item.title}（${item.minutes}分）")

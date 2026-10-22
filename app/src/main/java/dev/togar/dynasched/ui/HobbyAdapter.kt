@@ -55,14 +55,20 @@ class HobbyAdapter(
         notifyItemMoved(from, to)
     }
 
+    /** 優先度の段（設定で決めたもの）。画面が開くたびに渡し直す */
+    var levels: List<dev.togar.dynasched.PriorityLevel> = dev.togar.dynasched.Priorities.DEFAULT
+
     /**
      * 優先度の帯色。**数字を読ませる前に、高い低いを色で伝える**のが目的。
-     * 既定が 3/5/8 の3段なので、その境目で切ってある。
+     * 段の数は設定で変わるので、一番上・一番下・その間で塗り分ける。
      */
-    private fun priorityColor(p: Int): Int = when {
-        p >= 8 -> 0xFFE24A90.toInt()   // 高い
-        p >= 5 -> 0xFF4A90E2.toInt()   // 普通
-        else -> 0xFF5F5F6E.toInt()     // 低い
+    private fun priorityColor(p: Int): Int {
+        val rank = dev.togar.dynasched.Priorities.rankOf(levels, p)
+        return when {
+            rank == 0 -> 0xFFE24A90.toInt()                  // 一番上
+            rank == levels.size - 1 -> 0xFF5F5F6E.toInt()    // 一番下
+            else -> 0xFF4A90E2.toInt()
+        }
     }
 
     inner class VH(view: View) : RecyclerView.ViewHolder(view) {
@@ -138,7 +144,7 @@ class HobbyAdapter(
             holder.priority.visibility = View.GONE
         } else {
             holder.priority.visibility = View.VISIBLE
-            holder.priority.text = item.priority.toString()
+            holder.priority.text = dev.togar.dynasched.Priorities.name(levels, item.priority).take(4)
             holder.priority.alpha = if (item.isCompleted) 0.4f else 1.0f
             val bg = android.graphics.drawable.GradientDrawable().apply {
                 cornerRadius = 6 * density
@@ -192,14 +198,12 @@ class HobbyAdapter(
         val h = item.durationMinutes / 60
         val m = item.durationMinutes % 60
         val dur = if (h > 0) "${h}時間${if (m > 0) "${m}分" else ""}" else "${m}分"
-        val prio = when {
-            item.priority >= 8 -> "高"
-            item.priority <= 3 -> "低"
-            else -> "中"
-        }
-        val base = StringBuilder("$dur ・ ${item.locationLabel(places)} ・ 優先$prio")
+        val prio = dev.togar.dynasched.Priorities.name(levels, item.priority)
+        val base = StringBuilder("$dur ・ ${item.locationLabel(places)} ・ 優先度 $prio")
         val tags = Tags.display(item.tags)
         if (tags.isNotEmpty()) base.append("  $tags")
+        val want = dev.togar.dynasched.data.Want.badge(item.wantDate, item.wantLevel)
+        if (want.isNotEmpty() && !item.isCompleted) base.append("\n").append(want)
         if (item.note.isNotBlank()) {
             val memo = item.note.replace("\n", " ").let {
                 if (it.length > 40) it.substring(0, 40) + "…" else it

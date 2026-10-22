@@ -24,6 +24,10 @@ data class HobbyItem(
     val createdAt: String = "",
     /** 習慣から作られたタスクなら、その習慣のID。手で作ったものは 0 */
     val routineId: Long = 0,
+    /** やる日（yyyy-MM-dd）。空なら決めていない。[dev.togar.dynasched.data.Want] */
+    val wantDate: String = "",
+    /** やる日の強さ。0 決めない / 1 なるべく / 2 絶対 */
+    val wantLevel: Int = 0,
     var level: Int = 0,
     var hasChildren: Boolean = false  // 子を持つタスクはチェックボックス非表示（葉のみ完了可能）
 ) {

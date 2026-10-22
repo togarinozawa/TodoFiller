@@ -67,6 +67,7 @@ class MainActivity : AppCompatActivity(), dev.togar.dynasched.feedback.FeedbackB
             val fragment: Fragment = when (item.itemId) {
                 R.id.nav_today -> dev.togar.dynasched.ui.CalendarFragment()
                 R.id.nav_single -> HobbyFragment()
+                R.id.nav_now -> dev.togar.dynasched.ui.NowFragment()
                 R.id.nav_material -> MaterialFragment()
                 R.id.nav_settings -> SettingsFragment()
                 else -> dev.togar.dynasched.ui.CalendarFragment()

@@ -308,9 +308,52 @@ object LocalRepo : Repo {
                 sortOrder = c.int("sort_order"),
                 tags = c.str("tags"),
                 createdAt = c.str("created_at"),
-                routineId = c.long("routine_id")
+                routineId = c.long("routine_id"),
+                wantDate = c.str("want_date"),
+                wantLevel = c.int("want_level")
             )
         }
+
+    override fun setHobbyWant(ctx: Context, ids: Collection<Long>, date: String, level: Int) {
+        if (ids.isEmpty()) return
+        val db = LocalDb.get(ctx).writableDatabase
+        val (d, l) = if (date.isEmpty() || level <= 0) "" to 0 else date to level.coerceIn(1, 2)
+        db.beginTransaction()
+        try {
+            for (id in ids) db.execSQL(
+                "UPDATE hobby_tasks SET want_date=?, want_level=? WHERE id=?", arrayOf(d, l, id)
+            )
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    override fun remapPriorities(
+        ctx: Context, old: List<dev.togar.dynasched.PriorityLevel>, map: Map<Int, Int>
+    ) {
+        val db = LocalDb.get(ctx).writableDatabase
+        val changed = ArrayList<Long>()
+        db.beginTransaction()
+        try {
+            for (table in listOf("hobby_tasks", "routines")) {
+                val rows = db.rawQuery("SELECT id, priority FROM $table", null)
+                    .mapRows { it.long("id") to it.int("priority", 5) }
+                for ((id, p) in rows) {
+                    val next = dev.togar.dynasched.Priorities.remap(old, map, p)
+                    if (next == p) continue
+                    db.execSQL("UPDATE $table SET priority=? WHERE id=?", arrayOf(next, id))
+                    if (table == "hobby_tasks") changed.add(id)
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        // 優先度はNotionにも数字で持っている。押し返さないと次の同期で古い数字に戻る
+        changed.forEach { NotionSyncer.markDirty(ctx, it) }
+        if (changed.isNotEmpty()) NotionSyncer.syncSoon(ctx)
+    }
 
     override fun addHobby(
         ctx: Context, name: String, parentId: Long?, durationMinutes: Int,
@@ -814,7 +857,14 @@ object LocalRepo : Repo {
         val allowed = if (tags.isEmpty()) null
             else getHobby(ctx).filter { Tags.hasAny(it, tags) }.mapTo(HashSet()) { it.id }
 
-        for (h in hobbyRows(ctx)) {
+        // やる日を今日（か過ぎた日）に決めた物を先に。先の日に決めた物は最後に回す
+        // （今日の空きで消化してしまうと、その日に決めた意味が無くなる。出すだけは出す）
+        val today = java.time.LocalDate.now().toString()
+        val hobbies = hobbyRows(ctx).sortedWith(
+            compareByDescending<HobbyRow> { Want.rankOn(it.wantDate, it.wantLevel, today) }
+                .thenBy { if (Want.allowedOn(it.wantDate, today)) 0 else 1 }
+        )
+        for (h in hobbies) {
             if (allowed != null && h.id !in allowed) continue
             val dur = maxOf(15, h.durationMinutes)
             if (dur > minutes) continue
@@ -909,7 +959,7 @@ object LocalRepo : Repo {
     private fun placeableHobbies(ctx: Context): List<HobbyRow> {
         val all = hobbyRows(ctx)
         val filter = Prefs.placeFilter(ctx) ?: return all
-        val ok = filter.leafIds(getHobby(ctx))
+        val ok = filter.leafIds(getHobby(ctx), dev.togar.dynasched.Priorities.all(ctx))
         return all.filter { it.id in ok }
     }
 
@@ -926,7 +976,9 @@ object LocalRepo : Repo {
                 priority = c.int("priority", 5),
                 location = c.str("location", "anywhere"),
                 parentId = c.longOrNull("parent_id"),
-                createdAt = c.str("created_at")
+                createdAt = c.str("created_at"),
+                wantDate = c.str("want_date"),
+                wantLevel = c.int("want_level")
             )
         }
 

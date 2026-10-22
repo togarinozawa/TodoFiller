@@ -181,8 +181,9 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
          * 8: v40 系へ戻した版。中身は 5 と同じで、v46 の DB から上げられるように番号だけ飛ばした
          * 9: v48（v46のAPKの番号だけ上げて配り直した版）が使った番号。**使い回さない**
          * 10: materials.location（教材ごとの場所）
+         * 11: hobby_tasks.want_date・want_level（やる日）
          */
-        private const val VERSION = 10
+        private const val VERSION = 11
 
         /** (テーブル, 列, 定義) */
         private val MIGRATIONS = listOf(
@@ -201,7 +202,10 @@ class LocalDb(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, NAME, nul
             // 手で置いた・動かした予定。組み直しで消さない
             Triple("scheduled_events", "is_manual", "INTEGER DEFAULT 0"),
             // 教材の場所。空なら needs から決める（Places.materialPlace）
-            Triple("materials", "location", "TEXT DEFAULT ''")
+            Triple("materials", "location", "TEXT DEFAULT ''"),
+            // やる日（yyyy-MM-dd）と、その強さ（0 決めない / 1 なるべく / 2 絶対）。[data.Want]
+            Triple("hobby_tasks", "want_date", "TEXT DEFAULT ''"),
+            Triple("hobby_tasks", "want_level", "INTEGER DEFAULT 0")
         )
 
         @Volatile private var instance: LocalDb? = null

@@ -138,7 +138,9 @@ class LabeledSlider(
     context: Context,
     private val values: List<Int>,
     initialValue: Int,
-    private val labelOf: (Int) -> String = { it.toString() }
+    private val labelOf: (Int) -> String = { it.toString() },
+    /** 動かした時。目安の一言を下に出し直すのに使う */
+    private val onChange: (Int) -> Unit = {}
 ) : LinearLayout(context) {
 
     private val seek = SeekBar(context)
@@ -151,6 +153,7 @@ class LabeledSlider(
             val idx = values.indexOf(v)
             seek.progress = if (idx >= 0) idx else values.size / 2
             valueLabel.text = labelOf(value)
+            onChange(value)
         }
 
     init {
@@ -167,11 +170,45 @@ class LabeledSlider(
         seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
                 valueLabel.text = labelOf(value)
+                onChange(value)
             }
             override fun onStartTrackingTouch(sb: SeekBar?) {}
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
         addView(seek)
         addView(valueLabel)
+    }
+}
+
+/**
+ * タスクの優先度を選ぶ。段は設定で決めたもの（[dev.togar.dynasched.Priorities]）。
+ * 右ほど上の段。選んでいる段の目安（「すぐやれ」など）を下に出す。
+ */
+class PriorityPicker(context: Context, initial: Int) : LinearLayout(context) {
+
+    private val levels = dev.togar.dynasched.Priorities.all(context)
+    private val memo = TextView(context).apply { textSize = 12f }
+    private val slider: LabeledSlider
+
+    var value: Int
+        get() = slider.value
+        set(v) { slider.value = dev.togar.dynasched.Priorities.levelOf(levels, v).value }
+
+    init {
+        orientation = VERTICAL
+        val values = levels.map { it.value }.sorted()
+        slider = LabeledSlider(
+            context, values, dev.togar.dynasched.Priorities.levelOf(levels, initial).value,
+            { v -> dev.togar.dynasched.Priorities.name(levels, v) }
+        ) { v -> showMemo(v) }
+        addView(slider)
+        addView(memo)
+        showMemo(slider.value)
+    }
+
+    private fun showMemo(v: Int) {
+        val m = dev.togar.dynasched.Priorities.levelOf(levels, v).memo
+        memo.text = m
+        memo.visibility = if (m.isBlank()) GONE else VISIBLE
     }
 }

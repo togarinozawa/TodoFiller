@@ -15,7 +15,27 @@ import dev.togar.dynasched.ui.TaskFilter
  */
 object NowTasks {
 
-    data class Now(val place: String, val minutes: Int, val items: List<SuggestItem>)
+    /** [parents] はタスクのID → 親の並び（「英語 › 長文」）。分けた子は名前だけだと何の話か分からない */
+    data class Now(
+        val place: String, val minutes: Int, val items: List<SuggestItem>,
+        val parents: Map<Long, String> = emptyMap(),
+        /** 候補のタスクそのもの（メモ・タグ・やる日を見せるため） */
+        val tasks: Map<Long, dev.togar.dynasched.api.HobbyItem> = emptyMap()
+    )
+
+    /** 親から順に、祖先の名前を「 › 」でつなぐ。最上位なら空 */
+    fun parentPath(all: List<dev.togar.dynasched.api.HobbyItem>, id: Long): String {
+        val byId = all.associateBy { it.id }
+        val names = ArrayList<String>()
+        val seen = HashSet<Long>()
+        var p = byId[id]?.parentId
+        while (p != null && seen.add(p)) {
+            val x = byId[p] ?: break
+            names.add(x.name)
+            p = x.parentId
+        }
+        return names.asReversed().joinToString(" › ")
+    }
 
     /** いま使える時間。次の予定まで（分からなければ30分）、ただし就寝時刻は越えない */
     fun availableMinutes(ctx: Context): Int {
@@ -36,14 +56,20 @@ object NowTasks {
      * 候補を良い順に。ワーカースレッドから呼ぶ。
      * [filter] で絞ると、当てはまるタスクだけ（教材にはタグも場所の絞り込みも無いので外す）
      */
-    fun pick(ctx: Context, filter: TaskFilter?): Now {
+    fun pick(ctx: Context, filter: TaskFilter?, minutesOverride: Int? = null): Now {
         val loc = Prefs.widgetLoc(ctx)
-        val minutes = availableMinutes(ctx).coerceAtLeast(5)
+        val minutes = (minutesOverride ?: availableMinutes(ctx)).coerceAtLeast(5)
         val repo = Repo.current(ctx)
-        val items = repo.getSuggestions(ctx, loc, minutes, 100, emptySet())
-        val f = filter?.takeUnless { it.isEmpty } ?: return Now(loc, minutes, items)
-        val allowed = f.leafIds(repo.getHobby(ctx))
-        return Now(loc, minutes, items.filter { it.kind == "hobby" && it.id in allowed })
+        val all = repo.getHobby(ctx)
+        var items = repo.getSuggestions(ctx, loc, minutes, 100, emptySet())
+        val f = filter?.takeUnless { it.isEmpty }
+        if (f != null) {
+            val allowed = f.leafIds(all, dev.togar.dynasched.Priorities.all(ctx))
+            items = items.filter { it.kind == "hobby" && it.id in allowed }
+        }
+        val hobbyIds = items.filter { it.kind == "hobby" }.mapTo(HashSet()) { it.id }
+        val parents = hobbyIds.associateWith { parentPath(all, it) }.filterValues { it.isNotEmpty() }
+        return Now(loc, minutes, items, parents, all.filter { it.id in hobbyIds }.associateBy { it.id })
     }
 
     // ---- 外へ出す形（ドパチル向け）。中の呼び名をそのまま出さない ----
@@ -56,8 +82,11 @@ object NowTasks {
 
     fun internalKind(kind: String?): String = if (kind == KIND_STUDY) "material" else "hobby"
 
-    /** なぜこれか、の一言。警告画面で「なんでこれ？」と思わせないため */
-    fun reason(item: SuggestItem): String =
+    /** なぜこれか、の一言。警告画面で「なんでこれ？」と思わせないため。目安があれば添える */
+    fun reason(
+        item: SuggestItem,
+        levels: List<dev.togar.dynasched.PriorityLevel> = dev.togar.dynasched.Priorities.DEFAULT
+    ): String =
         if (item.kind == "material") "予定（教材）"
-        else "優先度 " + TaskFilter.priorityLabel(TaskFilter.priorityBand(item.priority))
+        else "優先度 " + dev.togar.dynasched.Priorities.levelOf(levels, item.priority).label
 }

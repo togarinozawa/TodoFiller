@@ -50,6 +50,9 @@ class SettingsFragment : Fragment() {
             Entry("場所", Places.all(ctx).joinToString("・") { it.name }) {
                 open(PlacesSettingsPage())
             },
+            Entry("優先度", dev.togar.dynasched.Priorities.all(ctx).joinToString("・") { it.name }) {
+                open(PrioritiesSettingsPage())
+            },
             Entry("時間帯と通知",
                 wake + if (Prefs.bedtimeNotice(ctx)) "・就寝時に通知" else "") {
                 open(TimeSettingsPage())

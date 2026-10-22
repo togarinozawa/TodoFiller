@@ -66,15 +66,18 @@ object FeedbackBar : Application.ActivityLifecycleCallbacks {
             tag = TAG
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(6), dp(16), dp(6))
+            // 細く小さく。毎画面の上にあるので、目立つと邪魔になる（止まった後だけは赤く目立たせる）
+            setPadding(dp(16), dp(1), dp(16), dp(1))
             addView(TextView(activity).apply {
-                textSize = 12f
+                textSize = 10f
+                includeFontPadding = false
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(TextView(activity).apply {
                 text = "送る ›"
-                textSize = 12f
-                setTextColor(activity.getColor(R.color.white))
+                textSize = 10f
+                includeFontPadding = false
+                setTextColor(activity.getColor(R.color.on_bg_dim))
             })
             setOnClickListener { open(activity) }
         }
@@ -86,7 +89,9 @@ object FeedbackBar : Application.ActivityLifecycleCallbacks {
         val label = (bar as ViewGroup).getChildAt(0) as TextView
         label.text = if (crashed) "前回アプリが止まりました。様子を知らせてください"
             else "不具合・要望を作者に送る"
-        label.setTextColor(activity.getColor(if (crashed) R.color.white else R.color.on_bg_dim))
+        val color = activity.getColor(if (crashed) R.color.white else R.color.on_bg_dim)
+        label.setTextColor(color)
+        ((bar as ViewGroup).getChildAt(1) as TextView).setTextColor(color)
     }
 
     private fun open(activity: Activity) {

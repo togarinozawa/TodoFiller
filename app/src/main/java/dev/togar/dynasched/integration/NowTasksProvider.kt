@@ -31,7 +31,7 @@ class NowTasksProvider : ContentProvider() {
         const val DEFAULT_LIMIT = 3
         const val MAX_LIMIT = 10
 
-        val COLUMNS = arrayOf("kind", "id", "title", "minutes", "priority", "reason")
+        val COLUMNS = arrayOf("kind", "id", "title", "minutes", "priority", "reason", "parent")
     }
 
     override fun onCreate(): Boolean = true
@@ -53,7 +53,8 @@ class NowTasksProvider : ContentProvider() {
         for (item in now.items.take(limit)) {
             cursor.addRow(arrayOf<Any?>(
                 NowTasks.externalKind(item.kind), item.id, item.title, item.minutes,
-                item.priority, NowTasks.reason(item)
+                item.priority, NowTasks.reason(item, dev.togar.dynasched.Priorities.all(ctx)),
+                now.parents[item.id].orEmpty()
             ))
         }
         cursor.extras = Bundle().apply {

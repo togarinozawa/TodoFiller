@@ -34,22 +34,21 @@ class HobbyFragment : Fragment() {
     private lateinit var empty: TextView
     private lateinit var dragHintText: TextView
     private lateinit var sortButton: Button
-    private lateinit var searchInput: android.widget.EditText
-    private lateinit var chips: com.google.android.material.chip.ChipGroup
+    private lateinit var filterButton: com.google.android.material.button.MaterialButton
+    private lateinit var tabs: com.google.android.material.tabs.TabLayout
+    private lateinit var subTabs: com.google.android.material.tabs.TabLayout
     private lateinit var placeFilterText: TextView
-    private lateinit var nowCard: View
-    private lateinit var nowLabel: TextView
-    private lateinit var nowTitle: TextView
-    private lateinit var statsText: TextView
     private lateinit var pointPop: TextView
     private lateinit var touchHelper: ItemTouchHelper
 
     /** 絞り込み。変えるたびに覚える（[Prefs.taskFilter]） */
     private var filter = TaskFilter()
 
-    /** 「いまやること」の候補と、いま出している番号。「ほかの」で次へ送る */
-    private var nowCandidates: List<dev.togar.dynasched.api.SuggestItem> = emptyList()
-    private var nowIndex = 0
+    /** タブを差し替えている最中か。差し替え中の選択通知で二重描画しないため */
+    private var rebuildingTabs = false
+
+    /** 下段で選んでいる小グループ。空なら塊ぜんぶ。画面を離れたら忘れてよい */
+    private var subTabKey: String = ""
 
     /** 数えるための控え。**描画のたびにDBを読まない**（メインスレッドが止まる） */
     private var statRowsCache: List<StatRow> = emptyList()
@@ -66,13 +65,10 @@ class HobbyFragment : Fragment() {
         swipe = root.findViewById(R.id.swipeRefresh)
         dragHintText = root.findViewById(R.id.dragHintText)
         sortButton = root.findViewById(R.id.sortButton)
-        searchInput = root.findViewById(R.id.searchInput)
-        chips = root.findViewById(R.id.filterChips)
+        filterButton = root.findViewById(R.id.filterButton)
+        tabs = root.findViewById(R.id.taskTabs)
+        subTabs = root.findViewById(R.id.taskSubTabs)
         placeFilterText = root.findViewById(R.id.placeFilterText)
-        nowCard = root.findViewById(R.id.nowCard)
-        nowLabel = root.findViewById(R.id.nowLabel)
-        nowTitle = root.findViewById(R.id.nowTitle)
-        statsText = root.findViewById(R.id.statsText)
         pointPop = root.findViewById(R.id.pointPop)
         val recycler = root.findViewById<RecyclerView>(R.id.recycler)
         val addButton = root.findViewById<Button>(R.id.addTaskButton)
@@ -93,7 +89,7 @@ class HobbyFragment : Fragment() {
         addButton.setOnClickListener {
             // 絞り込んでいる条件で始める。条件と違う物を足すと、足した物がその場に出てこない
             val intent = Intent(requireContext(), AddTaskActivity::class.java)
-            filter.groupId?.let { id -> loaded.firstOrNull { it.id == id } }?.let { g ->
+            groupOfCurrentTab()?.let { g ->
                 intent.putExtra(AddTaskActivity.EXTRA_PARENT_ID, g.id)
                 intent.putExtra(AddTaskActivity.EXTRA_PARENT_NAME, g.name)
             }
@@ -103,26 +99,49 @@ class HobbyFragment : Fragment() {
             startActivity(intent)
         }
         sortButton.setOnClickListener { showViewMenu() }
-
-        filter = Prefs.taskFilter(requireContext())
-        searchInput.setText(filter.text)
-        searchInput.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-            override fun afterTextChanged(e: android.text.Editable?) {
-                val t = e?.toString() ?: ""
-                if (t != filter.text) setFilter(filter.copy(text = t), rebuildChips = false)
-            }
-        })
-        root.findViewById<Button>(R.id.nowDo).setOnClickListener { doNow() }
-        root.findViewById<Button>(R.id.nowNext).setOnClickListener {
-            if (nowCandidates.isNotEmpty()) { nowIndex = (nowIndex + 1) % nowCandidates.size; renderNow() }
-        }
-        nowLabel.setOnClickListener { pickNowPlace() }
+        filterButton.setOnClickListener { openFilterPage() }
         placeFilterText.setOnClickListener { confirmPlaceAll() }
 
+        filter = Prefs.taskFilter(requireContext())
+        // v50 ではグループも絞り込みの条件だった。タブに戻したので、そちらへ移す
+        filter.groupId?.let { id ->
+            Prefs.setTaskTab(requireContext(), "g:$id")
+            filter = filter.copy(groupId = null)
+            Prefs.setTaskFilter(requireContext(), filter)
+        }
+        // 絞り込みの画面で「絞り込む」を押された
+        parentFragmentManager.setFragmentResultListener(TaskFilterPage.RESULT, viewLifecycleOwner) { _, _ ->
+            filter = Prefs.taskFilter(requireContext())
+            updateFilterButton()
+            render()
+        }
+
+        tabs.addOnTabSelectedListener(object : com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
+                if (rebuildingTabs) return
+                Prefs.setTaskTab(requireContext(), tab.tag as? String ?: GroupTabs.ALL)
+                subTabKey = ""   // 上段が変われば下段は別物になる
+                rebuildSubTabs()
+                render()
+            }
+            override fun onTabUnselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+            override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+        })
+        subTabs.addOnTabSelectedListener(object : com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
+                if (rebuildingTabs) return
+                subTabKey = tab.tag as? String ?: ""
+                render()
+            }
+            override fun onTabUnselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+            override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+        })
+
+        // 引き下ろしはNotionから取り直す合図にもする。
+        // 開いている間にNotion側で書いたものを、閉じずに拾えるように
         swipe.setOnRefreshListener { syncThenLoad() }
         updateSortLabel()
+        updateFilterButton()
         return root
     }
 
@@ -169,74 +188,68 @@ class HobbyFragment : Fragment() {
 
     private fun doneMode(): DoneMode = DoneMode.from(Prefs.taskDoneMode(requireContext()))
 
+    /**
+     * 「並び替え」の字。完了を隠している間はそれを見せる。気付かないまま
+     * 「終わったものが消えた」と思わないように（実際には隠れているだけ）
+     */
     private fun updateSortLabel() {
-        // 完了を隠している間はそれを見せる。気付かないまま「終わったものが消えた」と
-        // 思わないように（実際には隠れているだけ）。絞り込みはチップの方に見えている
-        val hidden = if (doneMode() == DoneMode.HIDDEN) " 済×" else ""
-        sortButton.text = shortLabel(sortMode()) + hidden
+        sortButton.text = if (doneMode() == DoneMode.HIDDEN) "並び替え・済×" else "並び替え"
     }
 
-    private fun shortLabel(s: TaskSort) = when (s) {
-        TaskSort.MANUAL -> "手動"
-        TaskSort.NEWEST -> "新しい順"
-        TaskSort.OLDEST -> "古い順"
-        TaskSort.PRIORITY -> "優先度順"
-        TaskSort.LONGEST -> "長い順"
-        TaskSort.SHORTEST -> "短い順"
+    /** 絞り込んでいる間は色を付けて、条件の数を出す。気付かないまま「タスクが消えた」と思わないように */
+    private fun updateFilterButton() {
+        val n = filter.count
+        val ctx = requireContext()
+        filterButton.text = if (n == 0) "絞り込み" else "絞り込み・$n"
+        val on = n > 0
+        filterButton.backgroundTintList = android.content.res.ColorStateList.valueOf(
+            if (on) ctx.getColor(R.color.primary) else android.graphics.Color.TRANSPARENT
+        )
+        filterButton.setTextColor(ctx.getColor(if (on) R.color.white else R.color.primary))
     }
 
-    /** 並び順と「完了の見せ方」、タグの絞り込みをまとめて選ぶ */
+    /** 絞り込みの画面。右から重ねて出す（戻ると今の一覧がそのまま残っている） */
+    private fun openFilterPage() {
+        parentFragmentManager.beginTransaction()
+            .setCustomAnimations(R.anim.filter_enter, R.anim.filter_exit, R.anim.filter_enter, R.anim.filter_exit)
+            .add(R.id.container, TaskFilterPage())
+            .addToBackStack(TaskFilterPage.RESULT)
+            .commit()
+    }
+
+    /** 並び順・完了の見せ方・済んだタブ・配置などをまとめて選ぶ */
     private fun showViewMenu() {
         val ctx = requireContext()
         val rows = ViewMenu.rows(
             sort = sortMode(),
             done = doneMode(),
-            statsLabel = if (Prefs.taskShowStats(ctx)) statsSpan(ctx).label else "出さない",
+            doneTabs = DoneTabs.from(Prefs.doneTabs(ctx)),
             groupsLast = Prefs.taskGroupsLast(ctx),
-            showNow = Prefs.taskShowNow(ctx),
-            filtering = !filter.isEmpty,
+            hasTabs = tabs.visibility == View.VISIBLE,
+            filtering = !placementFilter().isEmpty,
             placeFiltered = Prefs.placeFilter(ctx) != null
         )
         ViewMenuDialog.show(ctx, rows) { action ->
             when (action) {
                 is ViewMenuAction.Sort -> Prefs.setTaskSort(ctx, action.sort.name)
                 is ViewMenuAction.Done -> Prefs.setTaskDoneMode(ctx, action.mode.name)
-                ViewMenuAction.ShowNow -> {
-                    Prefs.setTaskShowNow(ctx, !Prefs.taskShowNow(ctx))
-                    refreshNow()
+                is ViewMenuAction.DoneTab -> {
+                    Prefs.setDoneTabs(ctx, action.mode.name)
+                    rebuildTabs()
                 }
+                ViewMenuAction.TabOrder -> { showTabOrder(subRow = false); return@show }
                 ViewMenuAction.PlaceFiltered -> { confirmPlaceFiltered(); return@show }
                 ViewMenuAction.PlaceAll -> { confirmPlaceAll(); return@show }
                 ViewMenuAction.GroupsLast ->
                     Prefs.setTaskGroupsLast(ctx, !Prefs.taskGroupsLast(ctx))
-                ViewMenuAction.StatsSpan -> { showStatsSpan(); return@show }
                 ViewMenuAction.BulkPlace -> { bulkPlace(); return@show }
+                ViewMenuAction.PickTomorrow -> { pickTomorrow(); return@show }
                 ViewMenuAction.CollapseAll -> Prefs.setCollapsed(ctx, allParentIds())
                 ViewMenuAction.ExpandAll -> Prefs.setCollapsed(ctx, emptySet())
             }
             updateSortLabel()
             render()
         }
-    }
-
-    /** 数える期間を選ぶ。出さないことも選べる */
-    private fun showStatsSpan() {
-        val ctx = requireContext()
-        val spans = Stats.Span.entries
-        val labels = spans.map { it.label }.toTypedArray() + "出さない"
-        AlertDialog.Builder(ctx)
-            .setTitle("済んだ数・増えた数")
-            .setItems(labels) { _, i ->
-                if (i < spans.size) {
-                    Prefs.setTaskStatsSpan(ctx, spans[i].name)
-                    Prefs.setTaskShowStats(ctx, true)
-                } else {
-                    Prefs.setTaskShowStats(ctx, false)
-                }
-                updateSortLabel(); render()
-            }
-            .setNegativeButton("閉じる", null)
-            .show()
     }
 
     private fun allParentIds(): Set<Long> =
@@ -252,224 +265,21 @@ class HobbyFragment : Fragment() {
 
     // ---- 絞り込み ----
 
-    /** 絞り込みを変えて覚える。検索欄から来た時はチップを作り直さない（打つたびに点滅する） */
-    private fun setFilter(next: TaskFilter, rebuildChips: Boolean = true) {
-        filter = next
-        Prefs.setTaskFilter(requireContext(), next)
-        if (rebuildChips) rebuildChips()
-        render()
-        refreshNow()
-    }
-
     private fun placeLabel(id: String): String {
         val ctx = requireContext()
         return dev.togar.dynasched.Places.taskChoices(dev.togar.dynasched.Places.all(ctx))
             .firstOrNull { it.first == id }?.second ?: id
     }
 
+    private fun priorityName(p: Int): String =
+        dev.togar.dynasched.Priorities.name(dev.togar.dynasched.Priorities.all(requireContext()), p)
+
     private fun filterSummary(f: TaskFilter): String =
-        f.summary(::placeLabel) { id -> loaded.firstOrNull { it.id == id }?.name }.joinToString(" × ")
+        f.summary(::placeLabel, { id -> loaded.firstOrNull { it.id == id }?.name }, ::priorityName)
+            .joinToString(" × ")
 
-    /**
-     * 条件チップ。どれも押すと選ぶ画面が開く。効いているものは色を付けて中身を見せる。
-     * **効いている条件が見えていないと「タスクが消えた」と思う**ので、短くても必ず出す。
-     */
-    private fun rebuildChips() {
-        if (!isAdded) return
-        val f = filter
-        chips.removeAllViews()
-        chips.addView(chip(if (f.habit == TaskFilter.Habit.ALL) "習慣" else f.habit.label,
-            f.habit != TaskFilter.Habit.ALL) { pickHabit() })
-        chips.addView(chip(if (f.places.isEmpty()) "場所" else f.places.joinToString("・") { placeLabel(it) },
-            f.places.isNotEmpty()) { pickPlaces() })
-        chips.addView(chip(
-            if (f.priorities.isEmpty()) "優先度"
-            else "優先度 " + f.priorities.sortedDescending().joinToString("・") { TaskFilter.priorityLabel(it) },
-            f.priorities.isNotEmpty()) { pickPriorities() })
-        chips.addView(chip(if (f.tags.isEmpty()) "タグ" else f.tags.sorted().joinToString(" ") { "#$it" },
-            f.tags.isNotEmpty()) { pickTags() })
-        val groupName = f.groupId?.let { id -> loaded.firstOrNull { it.id == id }?.name }
-        chips.addView(chip(groupName ?: "グループ", groupName != null) { pickGroup() })
-        if (!f.isEmpty) {
-            chips.addView(chip("✕ 条件を消す", false) {
-                filter = TaskFilter()
-                searchInput.setText("")
-                setFilter(TaskFilter())
-            })
-        }
-    }
-
-    private fun chip(label: String, active: Boolean, onClick: () -> Unit) =
-        com.google.android.material.chip.Chip(requireContext()).apply {
-            val ctx = requireContext()
-            text = label
-            isCheckable = false
-            chipStrokeWidth = 0f
-            chipBackgroundColor = android.content.res.ColorStateList.valueOf(
-                androidx.core.content.ContextCompat.getColor(ctx, if (active) R.color.primary else R.color.surface_variant)
-            )
-            setTextColor(androidx.core.content.ContextCompat.getColor(ctx, R.color.white))
-            setOnClickListener { onClick() }
-        }
-
-    private fun pickHabit() {
-        val ctx = requireContext()
-        val modes = TaskFilter.Habit.entries
-        val labels = modes.map { if (it == filter.habit) "● ${it.label}" else "　${it.label}" } + "　習慣の繰り返しを直す…"
-        AlertDialog.Builder(ctx)
-            .setTitle("習慣")
-            .setItems(labels.toTypedArray()) { _, i ->
-                if (i < modes.size) setFilter(filter.copy(habit = modes[i]))
-                else RoutineEditor.showList(ctx) { if (isAdded) load() }
-            }
-            .setNegativeButton("閉じる", null)
-            .show()
-    }
-
-    /** 複数から選ぶ。何も選ばなければ条件なし */
-    private fun <T> pickMany(
-        title: String, values: List<T>, labels: List<String>, selected: Set<T>, onPick: (Set<T>) -> Unit
-    ) {
-        val picked = selected.toMutableSet()
-        AlertDialog.Builder(requireContext())
-            .setTitle(title)
-            .setMultiChoiceItems(labels.toTypedArray(), BooleanArray(values.size) { values[it] in picked }) { _, i, on ->
-                if (on) picked.add(values[i]) else picked.remove(values[i])
-            }
-            .setPositiveButton("絞り込む") { _, _ -> onPick(picked) }
-            .setNeutralButton("条件なし") { _, _ -> onPick(emptySet()) }
-            .setNegativeButton("やめる", null)
-            .show()
-    }
-
-    private fun pickPlaces() {
-        val choices = dev.togar.dynasched.Places.taskChoices(dev.togar.dynasched.Places.all(requireContext()))
-        pickMany("場所", choices.map { it.first }, choices.map { it.second }, filter.places) {
-            setFilter(filter.copy(places = it))
-        }
-    }
-
-    private fun pickPriorities() {
-        val values = TaskFilter.PRIORITIES
-        pickMany("優先度", values, values.map { TaskFilter.priorityLabel(it) }, filter.priorities) {
-            setFilter(filter.copy(priorities = it))
-        }
-    }
-
-    private fun pickTags() {
-        val known = Tags.known(loaded)
-        if (known.isEmpty()) {
-            Toast.makeText(requireContext(), "まだタグがありません。タスクを編集して付けてください", Toast.LENGTH_LONG).show()
-            return
-        }
-        // 消えたタグで絞ったままだと何も出なくなるので、選べる物に今のものを足しておく
-        val values = (known + filter.tags.filter { it !in known })
-        pickMany("タグ", values, values.map { "#$it" }, filter.tags) {
-            setFilter(filter.copy(tags = it))
-        }
-    }
-
-    /** 子を持つタスク（グループ）の中だけを見る。入れ子は「親 › 子」と書いて区別する */
-    private fun pickGroup() {
-        val ctx = requireContext()
-        val parents = loaded.mapNotNullTo(HashSet()) { it.parentId }
-        val byId = loaded.associateBy { it.id }
-        fun path(i: HobbyItem): String {
-            val names = ArrayList<String>()
-            var cur: HobbyItem? = i
-            val seen = HashSet<Long>()
-            while (cur != null && seen.add(cur.id)) { names.add(cur.name); cur = cur.parentId?.let { byId[it] } }
-            return names.asReversed().joinToString(" › ")
-        }
-        val groups = loaded.filter { it.id in parents }.map { it.id to path(it) }.sortedBy { it.second }
-        if (groups.isEmpty()) {
-            Toast.makeText(ctx, "グループがありません（子タスクを持つタスクがグループになります）", Toast.LENGTH_LONG).show()
-            return
-        }
-        val labels = listOf(if (filter.groupId == null) "● すべて" else "　すべて") +
-            groups.map { (id, name) -> if (id == filter.groupId) "● $name" else "　$name" }
-        AlertDialog.Builder(ctx)
-            .setTitle("グループ")
-            .setItems(labels.toTypedArray()) { _, i ->
-                setFilter(filter.copy(groupId = if (i == 0) null else groups[i - 1].first))
-            }
-            .setNegativeButton("閉じる", null)
-            .show()
-    }
-
-    // ---- いまやること ----
-
-    private var nowLoc = ""
-    private var nowMinutes = 30
-
-    /**
-     * いまの場所・時間でできる候補を探して、1つだけ出す。
-     * 絞り込んでいればその中から（「寮のみ × #英語」で絞れば、その中で今やるもの）
-     */
-    private fun refreshNow() {
-        if (!isAdded) return
-        val ctx = requireContext()
-        if (!Prefs.taskShowNow(ctx)) {
-            nowCard.visibility = View.GONE
-            return
-        }
-        val app = ctx.applicationContext
-        val f = filter
-        Api.async({ dev.togar.dynasched.data.NowTasks.pick(app, f) }, { now ->
-            if (!isAdded) return@async
-            val next = now.items
-            // 同じ候補が先頭のままなら、「ほかの」で送った位置を保つ
-            val keep = nowCandidates.getOrNull(nowIndex)?.let { cur -> next.indexOfFirst { it.id == cur.id && it.kind == cur.kind } } ?: -1
-            nowCandidates = next
-            nowIndex = if (keep >= 0) keep else 0
-            nowLoc = now.place
-            nowMinutes = now.minutes
-            renderNow()
-        }, { if (isAdded) nowCard.visibility = View.GONE })
-    }
-
-    private fun renderNow() {
-        val ctx = requireContext()
-        val place = dev.togar.dynasched.Places.name(dev.togar.dynasched.Places.all(ctx), nowLoc)
-        nowCard.visibility = View.VISIBLE
-        nowLabel.text = "いまやること ・ $place・${nowMinutes}分 ▾"
-        val item = nowCandidates.getOrNull(nowIndex)
-        val doButton = nowCard.findViewById<Button>(R.id.nowDo)
-        val nextButton = nowCard.findViewById<Button>(R.id.nowNext)
-        if (item == null) {
-            nowTitle.text = if (filter.isEmpty) "いまできるものはありません。休みましょう"
-                else "この条件で、いまできるものはありません"
-            doButton.visibility = View.GONE
-            nextButton.visibility = View.GONE
-            return
-        }
-        nowTitle.text = "${if (item.kind == "material") "🎯 " else ""}${item.title}（${item.minutes}分）"
-        doButton.visibility = View.VISIBLE
-        nextButton.visibility = if (nowCandidates.size > 1) View.VISIBLE else View.GONE
-        nextButton.text = "ほかの ${nowIndex + 1}/${nowCandidates.size}"
-    }
-
-    /** 決めたら、終わっているはずの時刻に確認を出す（「暇なとき」と同じ） */
-    private fun doNow() {
-        val item = nowCandidates.getOrNull(nowIndex) ?: return
-        FreeTimeDialog.decide(requireActivity(), item, nowMinutes)
-    }
-
-    /** いまいる場所を変える。ウィジェット・「暇なとき」と同じ設定を使う */
-    private fun pickNowPlace() {
-        val ctx = requireContext()
-        val places = dev.togar.dynasched.Places.all(ctx)
-        val cur = places.indexOfFirst { it.id == Prefs.widgetLoc(ctx) }
-        AlertDialog.Builder(ctx)
-            .setTitle("いまどこにいますか")
-            .setSingleChoiceItems(places.map { it.name }.toTypedArray(), cur) { d, i ->
-                d.dismiss()
-                Prefs.setWidgetLoc(ctx, places[i].id)
-                refreshNow()
-            }
-            .setNegativeButton("やめる", null)
-            .show()
-    }
+    /** 配置に回す条件。絞り込みに、いま開いているグループのタブも足す */
+    private fun placementFilter(): TaskFilter = filter.copy(groupId = groupOfCurrentTab()?.id)
 
     // ---- 配置の対象 ----
 
@@ -485,6 +295,7 @@ class HobbyFragment : Fragment() {
 
     private fun confirmPlaceFiltered() {
         val ctx = requireContext()
+        val filter = placementFilter()
         if (filter.isEmpty) return
         AlertDialog.Builder(ctx)
             .setTitle("いまの絞り込みだけ配置する")
@@ -548,9 +359,8 @@ class HobbyFragment : Fragment() {
                 swipe.isRefreshing = false
                 loaded = all
                 statRowsCache = stats
-                rebuildChips()
+                rebuildTabs()
                 render()
-                refreshNow()
                 celebrateIfReached(stats)
             },
             onError = { e ->
@@ -562,50 +372,135 @@ class HobbyFragment : Fragment() {
         )
     }
 
-    /** 片付いた数・増えた数。数えるのは [Stats]、ここは出すだけ */
-    private fun renderStats(ctx: android.content.Context) {
-        if (!Prefs.taskShowStats(ctx)) {
-            statsText.visibility = View.GONE
-            return
-        }
-        val span = statsSpan(ctx)
-        val from = Stats.from(java.time.LocalDate.now(), span)
-        val s = Stats.count(statRowsCache, from)
-        statsText.text = "${span.label}: ${s.line()}"
-        statsText.visibility = View.VISIBLE
+    // ---- グループのタブ ----
+
+    /** いま選んでいるタブ。無くなっていたら「すべて」に戻す */
+    private fun currentTab(): String {
+        val key = Prefs.taskTab(requireContext())
+        return if (GroupTabs.exists(GroupTabs.top(loaded), key)) key else GroupTabs.ALL
     }
 
-    private fun statsSpan(ctx: android.content.Context): Stats.Span =
-        Stats.Span.entries.firstOrNull { it.name == Prefs.taskStatsSpan(ctx) } ?: Stats.Span.WEEK
+    /** 下段で小グループを選んでいればそちら、無ければ上段 */
+    private fun effectiveTab(): String {
+        val top = currentTab()
+        return if (subTabKey.isNotEmpty() && subTabKey != top) subTabKey else top
+    }
+
+    /** いま開いている塊。塊のタブでなければ null */
+    private fun groupOfCurrentTab(): HobbyItem? {
+        val id = GroupTabs.groupIdOf(effectiveTab()) ?: return null
+        return loaded.firstOrNull { it.id == id }
+    }
+
+    private fun doneTabsMode(): DoneTabs = DoneTabs.from(Prefs.doneTabs(requireContext()))
+
+    /**
+     * タブを作り直す。グループは増減するので、読み込みのたびに組み直す。
+     * 差し替え中の選択通知は無視する（作り直しただけで描画が走ると点滅する）。
+     */
+    private fun rebuildTabs() {
+        val ctx = requireContext()
+        val selected = currentTab()
+        val list = GroupTabs.arrange(
+            GroupTabs.applyOrder(GroupTabs.top(loaded), Prefs.taskTabOrder(ctx)), doneTabsMode(), selected
+        )
+        if (list.size <= 1) {
+            // グループが1つも無ければタブは要らない
+            tabs.visibility = View.GONE
+            tabs.removeAllTabs()
+            rebuildSubTabs()
+            return
+        }
+        fillTabs(tabs, list, selected) { showTabOrder(subRow = false) }
+        tabs.visibility = View.VISIBLE
+        rebuildSubTabs()
+    }
+
+    /** 塊の中に小グループがある時だけ、下段を出す */
+    private fun rebuildSubTabs() {
+        val ctx = requireContext()
+        val list = GroupTabs.arrange(
+            GroupTabs.applyOrder(GroupTabs.sub(loaded, currentTab()), Prefs.taskTabOrder(ctx)),
+            doneTabsMode(), subTabKey
+        )
+        if (list.size <= 1) {
+            subTabs.visibility = View.GONE
+            subTabs.removeAllTabs()
+            subTabKey = ""
+            return
+        }
+        if (list.none { it.key == subTabKey }) subTabKey = ""
+        // 空 = 塊ぜんぶ。先頭がそれに当たる
+        fillTabs(subTabs, list, subTabKey.ifEmpty { list.first().key }) { showTabOrder(subRow = true) }
+        subTabs.visibility = View.VISIBLE
+    }
+
+    /** 済んだ塊のタブは薄くする。長押しで並びを変える */
+    private fun fillTabs(
+        bar: com.google.android.material.tabs.TabLayout, list: List<TaskTab>, selected: String,
+        onLongPress: () -> Unit
+    ) {
+        rebuildingTabs = true
+        bar.removeAllTabs()
+        for (t in list) {
+            val tab = bar.newTab().setText(t.label)
+            tab.tag = t.key
+            bar.addTab(tab, t.key == selected)
+            tab.view.alpha = if (t.done) 0.4f else 1f
+            tab.view.setOnLongClickListener { onLongPress(); true }
+        }
+        rebuildingTabs = false
+    }
+
+    /**
+     * タブの左右の並びを変える。上段と下段は別々に並べる。
+     * 先頭の「すべて」「ぜんぶ」は動かさない（いつも同じ場所にある方が戻りやすい）。
+     */
+    private fun showTabOrder(subRow: Boolean) {
+        val ctx = requireContext()
+        val order = Prefs.taskTabOrder(ctx)
+        val list = GroupTabs.applyOrder(
+            if (subRow) GroupTabs.sub(loaded, currentTab()) else GroupTabs.top(loaded), order
+        )
+        val movable = list.drop(1)
+        if (movable.size < 2) {
+            Toast.makeText(ctx, "並べ替えるほどタブがありません", Toast.LENGTH_SHORT).show()
+            return
+        }
+        TabOrderDialog.show(requireActivity(), if (subRow) "下段のタブの並び" else "タブの並び", movable) { keys ->
+            Prefs.setTaskTabOrder(ctx, GroupTabs.saveOrder(Prefs.taskTabOrder(ctx), keys))
+            if (subRow) rebuildSubTabs() else rebuildTabs()
+        }
+    }
 
     /** 読み直さずに並べ直す。並び順・折りたたみ・絞り込み・タブを変えたときはこちらだけ */
     private fun render() {
         if (!isAdded) return
         val ctx = requireContext()
-        val visible = filter.apply(loaded)
-        renderStats(ctx)
+        val levels = dev.togar.dynasched.Priorities.all(ctx)
+        val visible = filter.apply(GroupTabs.apply(loaded, effectiveTab()), levels)
         renderPlaceFilter()
         val mode = doneMode()
-        // グループを下に回すのは塊で絞っていない時だけ。塊の中は中身そのものが一つのグループなので
+        // グループを下に回すのは「すべて」だけ。塊のタブの中は中身そのものが一つのグループなので
         val rows = TaskList.build(visible, sortMode(), Prefs.collapsed(ctx), mode,
-            groupsLast = Prefs.taskGroupsLast(ctx) && filter.groupId == null)
+            groupsLast = Prefs.taskGroupsLast(ctx) && currentTab() == GroupTabs.ALL)
         adapter.places = dev.togar.dynasched.Places.all(ctx)
+        adapter.levels = levels
         adapter.submit(rows)
         empty.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
         empty.text = when {
             // 全部終わっている時に「タスクはありません」だと消えたように見える
             mode == DoneMode.HIDDEN && visible.isNotEmpty() -> "残っているタスクはありません"
             !filter.isEmpty -> "この条件に当てはまるタスクはありません"
+            currentTab() != GroupTabs.ALL -> "この中にタスクはありません"
             else -> "タスクはありません"
         }
     }
 
     // ---- つかんで動かす ----
 
-    /**
-     * 一番浅く置いた時の親。塊で絞っていればその塊、それ以外は最上位。
-     */
-    private fun dropRoot(): Long? = filter.groupId?.takeIf { id -> loaded.any { it.id == id } }
+    /** 一番浅く置いた時の親。塊のタブならその塊（下段で選んでいればそちら）、それ以外は最上位 */
+    private fun dropRoot(): Long? = groupOfCurrentTab()?.id
 
     /** つかんだ時の段。横のずれと足して落とし先の段を出す */
     private var dragBaseLevel = 0
@@ -777,7 +672,7 @@ class HobbyFragment : Fragment() {
             TaskList.priorityAfterMove(rows, moved.id, dropIndex) else null
 
         // グループを下に回している時は、グループを単独タスクの上に置いても下に戻る。黙って戻ると壊れたように見える
-        if (Prefs.taskGroupsLast(requireContext()) && filter.groupId == null) {
+        if (Prefs.taskGroupsLast(requireContext()) && currentTab() == GroupTabs.ALL) {
             val groups = loaded.mapNotNullTo(HashSet()) { it.parentId }
             if (drop.siblingIds.map { it in groups }.zipWithNext().any { (a, b) -> a && !b }) {
                 Toast.makeText(requireContext(), "グループは下にまとまります（「並び順」で解除できます）",
@@ -806,9 +701,7 @@ class HobbyFragment : Fragment() {
                 loaded = all
                 render()
                 if (newPriority != null && newPriority != moved.priority) {
-                    val label = when {
-                        newPriority >= 8 -> "高"; newPriority <= 3 -> "低"; else -> "中"
-                    }
+                    val label = priorityName(newPriority)
                     Toast.makeText(requireContext(), "優先度を$label にしました", Toast.LENGTH_SHORT).show()
                 }
             },
@@ -875,6 +768,71 @@ class HobbyFragment : Fragment() {
         Prefs.setGoalCelebratedOn(ctx, today.toString())
         view?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         Toast.makeText(ctx, "今日の目標 ${p.goal}件に届きました", Toast.LENGTH_SHORT).show()
+    }
+
+    // ---- 明日やるもの ----
+
+    /**
+     * 明日やるタスクをまとめて選ぶ。何時にやるかは決めない（配置に任せる）。
+     * 絞り込んでいればその中から選ぶ（「#英語」で絞ってから明日の分を選ぶ、のように）。
+     */
+    private fun pickTomorrow() {
+        val ctx = requireContext()
+        val tomorrow = java.time.LocalDate.now().plusDays(1).toString()
+        val parents = loaded.mapNotNullTo(HashSet()) { it.parentId }
+        val levels = dev.togar.dynasched.Priorities.all(ctx)
+        val items = filter.apply(loaded, levels).filter { it.id !in parents && !it.isCompleted }
+            .sortedByDescending { it.priority }
+        if (items.isEmpty()) {
+            Toast.makeText(ctx, "選べるタスクがありません", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val labels = items.map { t ->
+            val parent = dev.togar.dynasched.data.NowTasks.parentPath(loaded, t.id)
+            val other = if (t.wantDate.isNotEmpty() && t.wantDate != tomorrow)
+                "（📌 ${dev.togar.dynasched.data.Want.dayLabel(t.wantDate)}）" else ""
+            (if (parent.isNotEmpty()) "$parent › " else "") + t.name + other
+        }
+        val picked = items.filter { it.wantDate == tomorrow }.mapTo(HashSet()) { it.id }
+        val before = picked.toSet()
+        AlertDialog.Builder(ctx)
+            .setTitle(if (filter.isEmpty) "明日やるもの" else "明日やるもの（いまの絞り込みの中から）")
+            .setMultiChoiceItems(labels.toTypedArray(), BooleanArray(items.size) { items[it].id in picked }) { _, i, on ->
+                if (on) picked.add(items[i].id) else picked.remove(items[i].id)
+            }
+            .setPositiveButton("次へ") { _, _ ->
+                val removed = before - picked
+                if (picked.isEmpty()) { saveTomorrow(emptySet(), removed, 0); return@setPositiveButton }
+                AlertDialog.Builder(ctx)
+                    .setTitle("${picked.size}件をどのくらいやる？")
+                    .setItems(arrayOf(
+                        "絶対（枠に入らなければ、空いている時間に入れる）",
+                        "なるべく（明日の枠に先に入れる。入らなければ次の日へ）"
+                    )) { _, i ->
+                        saveTomorrow(picked, removed,
+                            if (i == 0) dev.togar.dynasched.data.Want.MUST else dev.togar.dynasched.data.Want.PREFER)
+                    }
+                    .setNegativeButton("やめる", null)
+                    .show()
+            }
+            .setNegativeButton("やめる", null)
+            .show()
+    }
+
+    private fun saveTomorrow(picked: Set<Long>, removed: Set<Long>, level: Int) {
+        val app = requireContext().applicationContext
+        val tomorrow = java.time.LocalDate.now().plusDays(1).toString()
+        Api.async({
+            val repo = Repo.current(app)
+            repo.setHobbyWant(app, removed, "", 0)
+            repo.setHobbyWant(app, picked, tomorrow, level)
+        }, {
+            if (!isAdded) return@async
+            load()
+            runPlacement()
+        }, { e ->
+            if (isAdded) Toast.makeText(requireContext(), "決められませんでした: ${Api.friendlyMessage(e)}", Toast.LENGTH_LONG).show()
+        })
     }
 
     // ---- 場所をまとめて変える ----
@@ -1015,12 +973,16 @@ class HobbyFragment : Fragment() {
         root.addView(locSpinner)
 
         root.addView(label("優先度"))
-        val prioValues = listOf(3, 5, 8)
-        val prioNames = arrayOf("低", "中", "高")
-        val prioSlider = LabeledSlider(ctx, prioValues, item.priority) { v ->
-            prioNames[prioValues.indexOf(v).coerceIn(0, 2)]
-        }
+        val prioSlider = PriorityPicker(ctx, item.priority)
         root.addView(prioSlider)
+
+        // やる日。葉だけ（グループは配下ごとに決める。親に付けても配置されるのは葉なので）
+        val isLeaf = loaded.none { it.parentId == item.id }
+        val want = WantPickerView(ctx, item.wantDate, item.wantLevel)
+        if (isLeaf) {
+            root.addView(label("やる日（何時かは配置に任せる）"))
+            root.addView(want)
+        }
 
         root.addView(label("カレンダーの色"))
         val colorPalette = ColorPaletteView(ctx, dev.togar.dynasched.api.CalColor.indexOfId(item.color))
@@ -1083,12 +1045,16 @@ class HobbyFragment : Fragment() {
                 val appCtx = requireContext().applicationContext
                 val tags = tagInput.value
                 val spreadCount = spread.count { it.value.isChecked }
+                val wantChanged = isLeaf && (want.date != item.wantDate || want.level != item.wantLevel)
+                val wantDate = want.date
+                val wantLevel = want.level
                 Api.async(
                     work = {
                         val repo = Repo.current(ctx)
                         repo.editHobby(
                             appCtx, item.id, name, total, priority, location, note, color, tags
                         )
+                        if (wantChanged) repo.setHobbyWant(appCtx, listOf(item.id), wantDate, wantLevel)
                         if (spreadCount > 0) {
                             repo.applyToSubtree(
                                 appCtx, item.id,
@@ -1107,6 +1073,8 @@ class HobbyFragment : Fragment() {
                             Toast.LENGTH_SHORT
                         ).show()
                         load()
+                        // やる日を変えたらカレンダーにすぐ出す（毎朝の組み直しを待つと今日の分に間に合わない）
+                        if (wantChanged) runPlacement()
                     },
                     onError = { e ->
                         if (!isAdded) return@async
@@ -1129,7 +1097,7 @@ class HobbyFragment : Fragment() {
         }, { })
     }
 
-        private fun openAddChild(parent: HobbyItem) {
+    private fun openAddChild(parent: HobbyItem) {
         val intent = Intent(requireContext(), AddTaskActivity::class.java)
         intent.putExtra(AddTaskActivity.EXTRA_PARENT_ID, parent.id)
         intent.putExtra(AddTaskActivity.EXTRA_PARENT_NAME, parent.name)

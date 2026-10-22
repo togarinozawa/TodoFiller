@@ -69,16 +69,50 @@ object Prefs {
     }
 
     /**
-     * ウィジェットと「暇なとき」の現在地（場所のid）。
-     * **消した場所を指したままにしない。**候補が永遠に0件になるので家に戻す。
+     * いまいる場所（場所のid）。「いまやること」「暇なとき」が使う。
+     *
+     * その日に手で選んでいればそれ。選んでいなければ曜日ごとの「いつもの場所」
+     * （[weekdayPlaces]）。どちらも無ければ最後に手で選んだ場所。
+     * 平日なのに前の週末に選んだ「実家」のまま、にならないように。
      */
     fun widgetLoc(ctx: Context): String {
-        val v = sp(ctx).getString("widget_loc", Places.HOME) ?: Places.HOME
-        return if (Places.all(ctx).any { it.id == v }) v else Places.HOME
+        val p = sp(ctx)
+        return currentPlace(
+            Places.all(ctx).map { it.id }, weekdayPlaces(ctx),
+            p.getString("widget_loc", Places.HOME), p.getString("widget_loc_day", ""),
+            java.time.LocalDate.now()
+        )
     }
 
+    /** 手で選んだ。今日いっぱいは曜日の場所より優先する */
     fun setWidgetLoc(ctx: Context, loc: String) {
-        sp(ctx).edit().putString("widget_loc", loc).apply()
+        sp(ctx).edit().putString("widget_loc", loc)
+            .putString("widget_loc_day", java.time.LocalDate.now().toString()).apply()
+    }
+
+    /**
+     * [widgetLoc] の中身（テストで固定する）。
+     * **消した場所を指したままにしない。**候補が永遠に0件になるので家に戻す。
+     */
+    fun currentPlace(
+        placeIds: List<String>, weekdays: List<String>, manual: String?, manualDay: String?,
+        today: java.time.LocalDate
+    ): String {
+        fun ok(id: String?) = !id.isNullOrEmpty() && id in placeIds
+        if (manualDay == today.toString() && ok(manual)) return manual!!
+        val base = weekdays.getOrNull(today.dayOfWeek.value - 1)
+        if (ok(base)) return base!!
+        return if (ok(manual)) manual!! else Places.HOME
+    }
+
+    /** 曜日ごとのいつもの場所。月曜から7つ。空は「決めない」 */
+    fun weekdayPlaces(ctx: Context): List<String> {
+        val raw = (sp(ctx).getString("weekday_places", "") ?: "").split(",")
+        return List(7) { raw.getOrNull(it)?.trim().orEmpty() }
+    }
+
+    fun setWeekdayPlaces(ctx: Context, ids: List<String>) {
+        sp(ctx).edit().putString("weekday_places", List(7) { ids.getOrNull(it).orEmpty() }.joinToString(",")).apply()
     }
 
     /**
@@ -293,11 +327,26 @@ object Prefs {
         sp(ctx).edit().putString("place_filter", filter?.takeUnless { it.isEmpty }?.encode() ?: "").apply()
     }
 
-    /** タスク画面の上に「いまやること」を出すか */
-    fun taskShowNow(ctx: Context): Boolean = sp(ctx).getBoolean("task_show_now", true)
+    /** 選んでいるグループのタブ（[dev.togar.dynasched.ui.GroupTabs]）。画面を離れて戻っても同じ場所に居られるように */
+    fun taskTab(ctx: Context): String = sp(ctx).getString("task_tab", "") ?: ""
 
-    fun setTaskShowNow(ctx: Context, on: Boolean) {
-        sp(ctx).edit().putBoolean("task_show_now", on).apply()
+    fun setTaskTab(ctx: Context, key: String) {
+        sp(ctx).edit().putString("task_tab", key).apply()
+    }
+
+    /** タブの左右の並び（タブのキーを並べたもの）。決めていなければ空 */
+    fun taskTabOrder(ctx: Context): List<String> =
+        (sp(ctx).getString("task_tab_order", "") ?: "").split('\n').filter { it.isNotEmpty() }
+
+    fun setTaskTabOrder(ctx: Context, keys: List<String>) {
+        sp(ctx).edit().putString("task_tab_order", keys.joinToString("\n")).apply()
+    }
+
+    /** 中が全部済んだグループのタブの見せ方（DoneTabs の名前） */
+    fun doneTabs(ctx: Context): String = sp(ctx).getString("done_tabs", "END") ?: "END"
+
+    fun setDoneTabs(ctx: Context, name: String) {
+        sp(ctx).edit().putString("done_tabs", name).apply()
     }
 
     /** 折りたたんでいる親タスクのID */

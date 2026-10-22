@@ -41,10 +41,12 @@ object Backup {
         "fill_days", "font_scale", "task_sort", "task_done_mode", "owner_mode", "notion_schema",
         "wake_min", "bedtime_min", "bedtime_notice", "avoid_busy", "animations",
         "task_order", "grouping", "calendar_horizontal", "daily_goal",
-        "task_show_stats", "task_stats_span", "place_filter", "task_show_now",
+        "task_show_stats", "task_stats_span", "place_filter", "task_tab_order", "done_tabs",
         "task_groups_last", "widget_loc",
         // v47で足したもの
-        "places"
+        "places",
+        // v51で足したもの
+        "priority_levels", "weekday_places"
     )
 
     /** 控える表。端末にある表から、控えないものを除く */

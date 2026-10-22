@@ -22,7 +22,7 @@ data class TaskFilter(
     val habit: Habit = Habit.ALL,
     /** 場所のID。どこでも は [dev.togar.dynasched.Places.ANYWHERE] */
     val places: Set<String> = emptySet(),
-    /** 3/5/8 */
+    /** 優先度の段の数字（[dev.togar.dynasched.Priorities]）。段の間の値は近い段として見る */
     val priorities: Set<Int> = emptySet(),
     val tags: Set<String> = emptySet(),
     /** この塊の中だけ。塊自身は出さない（見出しと同じ名前を繰り返さない） */
@@ -38,12 +38,20 @@ data class TaskFilter(
         }
     }
 
+    /** 効いている条件の数。「絞り込み・3」と出す */
+    val count: Int
+        get() = listOf(text.isNotBlank(), habit != Habit.ALL, places.isNotEmpty(),
+            priorities.isNotEmpty(), tags.isNotEmpty(), groupId != null).count { it }
+
     val isEmpty: Boolean
         get() = text.isBlank() && habit == Habit.ALL && places.isEmpty() &&
             priorities.isEmpty() && tags.isEmpty() && groupId == null
 
     /** 葉そのものが条件に合うか。[ancestors] は親から順でなくてよい（名前を見るだけ） */
-    fun matchesLeaf(item: HobbyItem, ancestors: List<HobbyItem> = emptyList()): Boolean {
+    fun matchesLeaf(
+        item: HobbyItem, ancestors: List<HobbyItem> = emptyList(),
+        levels: List<dev.togar.dynasched.PriorityLevel> = dev.togar.dynasched.Priorities.DEFAULT
+    ): Boolean {
         when (habit) {
             Habit.ONLY -> if (item.routineId <= 0) return false
             Habit.EXCEPT -> if (item.routineId > 0) return false
@@ -51,7 +59,8 @@ data class TaskFilter(
         }
         if (places.isNotEmpty() &&
             item.location.ifEmpty { dev.togar.dynasched.Places.ANYWHERE } !in places) return false
-        if (priorities.isNotEmpty() && priorityBand(item.priority) !in priorities) return false
+        if (priorities.isNotEmpty() &&
+            dev.togar.dynasched.Priorities.levelOf(levels, item.priority).value !in priorities) return false
         if (tags.isNotEmpty() && !Tags.hasAny(item, tags)) return false
         val q = text.trim()
         if (q.isNotEmpty()) {
@@ -63,7 +72,10 @@ data class TaskFilter(
     }
 
     /** 一覧に出すもの。当てはまる葉と、その祖先 */
-    fun apply(all: List<HobbyItem>): List<HobbyItem> {
+    fun apply(
+        all: List<HobbyItem>,
+        levels: List<dev.togar.dynasched.PriorityLevel> = dev.togar.dynasched.Priorities.DEFAULT
+    ): List<HobbyItem> {
         if (isEmpty) return all
         val scope = groupId?.let { id ->
             if (all.none { it.id == id }) all else TaskList.descendantsOf(all, id)
@@ -85,7 +97,7 @@ data class TaskFilter(
         for (i in scope) {
             if (i.id in parents) continue
             val anc = ancestorsOf(i)
-            if (!matchesLeaf(i, anc)) continue
+            if (!matchesLeaf(i, anc, levels)) continue
             keep.add(i.id)
             for (a in anc) if (a.id in scopeIds) keep.add(a.id)
         }
@@ -93,9 +105,12 @@ data class TaskFilter(
     }
 
     /** 配置に回してよい葉のID。[all] は完了も含んだ一覧でよい */
-    fun leafIds(all: List<HobbyItem>): Set<Long> {
+    fun leafIds(
+        all: List<HobbyItem>,
+        levels: List<dev.togar.dynasched.PriorityLevel> = dev.togar.dynasched.Priorities.DEFAULT
+    ): Set<Long> {
         val parents = all.mapNotNullTo(HashSet()) { it.parentId }
-        return apply(all).filter { it.id !in parents }.mapTo(HashSet()) { it.id }
+        return apply(all, levels).filter { it.id !in parents }.mapTo(HashSet()) { it.id }
     }
 
     fun encode(): String = JSONObject().apply {
@@ -108,31 +123,20 @@ data class TaskFilter(
     }.toString()
 
     /** チップに出す短い説明。条件ごとに1つ */
-    fun summary(placeName: (String) -> String, groupName: (Long) -> String?): List<String> {
+    fun summary(
+        placeName: (String) -> String, groupName: (Long) -> String?, priorityName: (Int) -> String
+    ): List<String> {
         val out = ArrayList<String>()
         if (text.isNotBlank()) out.add("「${text.trim()}」")
         if (habit != Habit.ALL) out.add(habit.label)
         groupId?.let { id -> groupName(id)?.let { out.add(it) } }
         if (places.isNotEmpty()) out.add(places.joinToString("・") { placeName(it) })
-        if (priorities.isNotEmpty()) out.add("優先度 " + priorities.sortedDescending().joinToString("・") { priorityLabel(it) })
+        if (priorities.isNotEmpty()) out.add("優先度 " + priorities.sortedDescending().joinToString("・") { priorityName(it) })
         if (tags.isNotEmpty()) out.add(tags.sorted().joinToString(" ") { "#$it" })
         return out
     }
 
     companion object {
-        val PRIORITIES = listOf(8, 5, 3)
-
-        /** 優先度は 3/5/8 の3段。古い行や手で直した値もどこかの段に入れる */
-        fun priorityBand(p: Int): Int = when {
-            p >= 7 -> 8
-            p <= 4 -> 3
-            else -> 5
-        }
-
-        fun priorityLabel(band: Int): String = when (band) {
-            8 -> "高"; 3 -> "低"; else -> "中"
-        }
-
         fun decode(raw: String?): TaskFilter {
             if (raw.isNullOrBlank()) return TaskFilter()
             return try {

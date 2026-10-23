@@ -41,6 +41,7 @@ sealed class ViewMenuAction {
     data class Sort(val sort: TaskSort) : ViewMenuAction()
     data class Done(val mode: DoneMode) : ViewMenuAction()
     data class DoneTab(val mode: DoneTabs) : ViewMenuAction()
+    data class GroupStyle(val mode: GroupView) : ViewMenuAction()
     object GroupsLast : ViewMenuAction()
     object TabOrder : ViewMenuAction()
     object PlaceFiltered : ViewMenuAction()
@@ -56,6 +57,7 @@ object ViewMenu {
     const val SORT = "並び順"
     const val DONE = "完了したタスク"
     const val DONE_TABS = "済んだグループのタブ"
+    const val GROUP_VIEW = "グループの見せ方"
     const val SHOW = "表示"
     const val PLACE = "配置"
     const val BULK = "まとめて操作"
@@ -70,6 +72,7 @@ object ViewMenu {
         sort: TaskSort,
         done: DoneMode,
         doneTabs: DoneTabs = DoneTabs.END,
+        groupView: GroupView = GroupView.TABS,
         groupsLast: Boolean = false,
         /** グループのタブが出ているか。出ていなければ並べ替える物が無い */
         hasTabs: Boolean = false,
@@ -91,10 +94,17 @@ object ViewMenu {
             rows.add(ViewMenuRow.Choice(ViewMenuAction.Done(it), it.label, it == done))
         }
 
-        // 中が全部済んだグループのタブ。残したままだと、空のタブが並び続ける
-        rows.add(ViewMenuRow.Section(DONE_TABS))
-        DoneTabs.entries.forEach {
-            rows.add(ViewMenuRow.Choice(ViewMenuAction.DoneTab(it), it.label, it == doneTabs))
+        // タブで選ぶ時だけ意味がある。インデントの時はタブが無いので出さない
+        rows.add(ViewMenuRow.Section(GROUP_VIEW))
+        GroupView.entries.forEach {
+            rows.add(ViewMenuRow.Choice(ViewMenuAction.GroupStyle(it), it.label, it == groupView))
+        }
+        if (groupView == GroupView.TABS) {
+            // 中が全部済んだグループのタブ。残したままだと、空のタブが並び続ける
+            rows.add(ViewMenuRow.Section(DONE_TABS))
+            DoneTabs.entries.forEach {
+                rows.add(ViewMenuRow.Choice(ViewMenuAction.DoneTab(it), it.label, it == doneTabs))
+            }
         }
 
         rows.add(ViewMenuRow.Section(SHOW))

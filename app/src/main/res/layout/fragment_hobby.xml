@@ -104,23 +104,19 @@
         android:textSize="12sp"
         android:visibility="gone" />
 
-    <!-- タスク追加（専用画面へ遷移） -->
-    <Button
-        android:id="@+id/addTaskButton"
+    <!-- 一覧と、右下のタスク追加ボタンを重ねる。
+         掴んだ行を上のタブまで運ぶ間だけ、コードで切り抜きを止める（HobbyFragment.setDragClipping）。
+         ずっと止めておくと、スクロールで上に半分出た行がタブの上に描かれてしまう -->
+    <FrameLayout
+        android:id="@+id/listFrame"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="8dp"
-        android:backgroundTint="@color/primary"
-        android:text="＋ タスクを追加"
-        android:textColor="@color/white" />
+        android:layout_height="0dp"
+        android:layout_weight="1">
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/swipeRefresh"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_height="match_parent">
 
         <FrameLayout
             android:layout_width="match_parent"
@@ -131,7 +127,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:clipToPadding="false"
-                android:paddingBottom="16dp" />
+                android:paddingBottom="88dp" />
 
             <TextView
                 android:id="@+id/emptyText"
@@ -183,5 +179,22 @@
                 android:visibility="gone" />
         </FrameLayout>
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    <!-- タスク追加。右下に、角を削った正方形。専用画面へ遷移 -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/addTaskButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:contentDescription="タスクを追加"
+        app:backgroundTint="@color/primary"
+        app:elevation="6dp"
+        app:fabCustomSize="56dp"
+        app:maxImageSize="28dp"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.CutCorner.Fab"
+        app:srcCompat="@drawable/ic_add"
+        app:tint="@color/white" />
+    </FrameLayout>
 
 </LinearLayout>

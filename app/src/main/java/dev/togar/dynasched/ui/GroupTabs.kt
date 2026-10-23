@@ -5,6 +5,19 @@ import dev.togar.dynasched.api.HobbyItem
 /** 横に並ぶタブ1つ。[done] は中のタスクが全部済んだグループ */
 data class TaskTab(val key: String, val label: String, val done: Boolean = false)
 
+/**
+ * グループの見せ方。タブで選ぶか、一覧の中で行をインデントして階層を見せるか。
+ * インデントにすると、タブは出ない（下段も）。グループの中身は一覧に続けて並ぶ。
+ */
+enum class GroupView(val label: String) {
+    TABS("タブで選ぶ"),
+    INDENT("一覧でインデント");
+
+    companion object {
+        fun from(name: String?): GroupView = entries.firstOrNull { it.name == name } ?: TABS
+    }
+}
+
 /** 中のタスクが全部済んだグループのタブをどう見せるか */
 enum class DoneTabs(val label: String) {
     DIM("薄くしてそのまま"),
@@ -108,4 +121,13 @@ object GroupTabs {
     }
 
     fun exists(tabs: List<TaskTab>, key: String): Boolean = tabs.any { it.key == key }
+
+    /**
+     * 塊を [targetGroup] の下へ動かしてよいか。自分自身や、自分の中の塊へは入れられない
+     * （木が輪になって、一覧から消えるため）。null（最上位）へはいつでも動かせる。
+     */
+    fun canMoveInto(all: List<HobbyItem>, itemId: Long, targetGroup: Long?): Boolean {
+        if (targetGroup == null) return true
+        return targetGroup != itemId && targetGroup !in TaskList.subtreeIds(all, itemId)
+    }
 }

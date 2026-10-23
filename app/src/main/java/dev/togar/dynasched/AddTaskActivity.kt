@@ -8,6 +8,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import dev.togar.dynasched.data.AddDefaults
 import dev.togar.dynasched.data.Repo
 import dev.togar.dynasched.api.Api
 import dev.togar.dynasched.ui.ColorPaletteView
@@ -106,17 +107,24 @@ class AddTaskActivity : AppCompatActivity() {
             noteParent.addView(repeat, noteParent.indexOfChild(noteInput))
         }
 
-        // 子タスクを足す時は、**親と同じ設定で始める**。
-        // グループ内のタスクは場所も優先度も揃っているのが普通で、
-        // 毎回入れ直させると結局そのまま既定値で入って設定が形骸化する。
-        loadDefaults(if (parentId != null && parentId >= 0) parentId else null) { parent ->
-            locationSpinner.setSelection(
-                locationValues.indexOf(parent.location).let { if (it >= 0) it else 0 }
-            )
-            prioritySlider.value = parent.priority
-            colorPalette.select(dev.togar.dynasched.api.CalColor.indexOfId(parent.color))
-            tagInput.setValue(parent.tags)
-            durationPicker.setMinutes(parent.durationMinutes)
+        // 初期値は、その親（グループ）に**前回足した時の設定**。覚えが無ければ親の設定を写す。
+        // グループ内のタスクは場所も優先度も揃っているのが普通で、毎回入れ直させると形骸化する。
+        // 親の設定だけを写していた頃は、親が「家」のまま配下に「実家」で足し続けると、毎回「家」で始まっていた
+        val groupId = if (parentId != null && parentId >= 0) parentId else null
+        loadDefaults(groupId) { remembered, parent ->
+            val d = remembered
+                ?: parent?.let { AddDefaults(it.location, it.priority, it.color, it.tags, it.durationMinutes) }
+            if (d != null) {
+                locationSpinner.setSelection(locationValues.indexOf(d.location).let { if (it >= 0) it else 0 })
+                prioritySlider.value = d.priority
+                colorPalette.select(dev.togar.dynasched.api.CalColor.indexOfId(d.color))
+                tagInput.setValue(d.tags)
+                durationPicker.setMinutes(d.durationMinutes)
+            }
+            // 場所を指定して開かれていたら（「場所」で絞っていた時など）、それを最後に勝たせる
+            intent.getStringExtra(EXTRA_LOCATION)?.let { loc ->
+                locationValues.indexOf(loc).takeIf { it >= 0 }?.let { locationSpinner.setSelection(it) }
+            }
         }
 
         saveButton.setOnClickListener {
@@ -146,6 +154,8 @@ class AddTaskActivity : AppCompatActivity() {
                     val repo = Repo.current(ctx)
                     if (kind == null) {
                         repo.addHobby(ctx, name, pid, total, priority, location, note, color, tagInput.value)
+                        // 次にこの親へ足す時の初期値になる
+                        AddDefaults.remember(ctx, pid, AddDefaults(location, priority, color, tagInput.value, total))
                     } else {
                         repo.saveRoutine(ctx, dev.togar.dynasched.data.Routine(
                             name = name, kind = kind, weekdays = repeat.weekdays,
@@ -175,22 +185,26 @@ class AddTaskActivity : AppCompatActivity() {
     private var knownTags: List<String> = emptyList()
 
     /**
-     * 既存タグの読み込みと、親からの引き継ぎ。
+     * 既存タグの読み込みと、初期値（前回この親に足した設定・親の設定）。
      * どちらもDBを触るのでワーカーへ回す。読み込む前に触られても落ちない形にしてある。
      */
     private fun loadDefaults(
         parentId: Long?,
-        onParent: (dev.togar.dynasched.api.HobbyItem) -> Unit
+        onDefaults: (remembered: AddDefaults?, parent: dev.togar.dynasched.api.HobbyItem?) -> Unit
     ) {
         val ctx = applicationContext
         Api.async(
             work = {
                 val all = Repo.current(ctx).getHobby(ctx)
-                dev.togar.dynasched.ui.Tags.known(all) to all.firstOrNull { it.id == parentId }
+                Triple(
+                    dev.togar.dynasched.ui.Tags.known(all),
+                    AddDefaults.remembered(ctx, parentId),
+                    all.firstOrNull { it.id == parentId }
+                )
             },
-            onSuccess = { (tags, parent) ->
+            onSuccess = { (tags, remembered, parent) ->
                 knownTags = tags
-                if (parent != null) onParent(parent)
+                onDefaults(remembered, parent)
             },
             onError = { /* 候補が出ないだけ。手で入れられる */ }
         )

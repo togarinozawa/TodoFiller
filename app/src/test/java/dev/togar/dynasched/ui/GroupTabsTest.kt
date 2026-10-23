@@ -2,6 +2,7 @@ package dev.togar.dynasched.ui
 
 import dev.togar.dynasched.api.HobbyItem
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -73,6 +74,15 @@ class GroupTabsTest {
         assertEquals(tabs, GroupTabs.applyOrder(tabs, emptyList()))
         // 出ていないタブの並びは残す
         assertEquals(listOf("g:2", "g:1", "g:9"), GroupTabs.saveOrder(listOf("g:9", "g:1", "g:2"), listOf("g:2", "g:1")))
+    }
+
+    @Test
+    fun `塊を別の塊へ動かせるのは、自分の中へ入れない時だけ`() {
+        assertTrue(GroupTabs.canMoveInto(tree, 4L, 5L))      // メール返信 → 引っ越し（別の島）
+        assertTrue(GroupTabs.canMoveInto(tree, 4L, null))    // 最上位へはいつでも
+        assertFalse(GroupTabs.canMoveInto(tree, 1L, 1L))     // 自分の下へ
+        assertFalse(GroupTabs.canMoveInto(tree, 1L, 3L))     // 自分の孫の下へ（輪になる）
+        assertFalse(GroupTabs.canMoveInto(tree, 1L, 2L))     // 自分の子の下へ
     }
 
     @Test

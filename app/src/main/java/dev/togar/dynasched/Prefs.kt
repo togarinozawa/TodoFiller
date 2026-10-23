@@ -342,6 +342,23 @@ object Prefs {
         sp(ctx).edit().putString("task_tab_order", keys.joinToString("\n")).apply()
     }
 
+    /** グループの見せ方（[dev.togar.dynasched.ui.GroupView] の名前） */
+    fun groupView(ctx: Context): String = sp(ctx).getString("group_view", "TABS") ?: "TABS"
+
+    fun setGroupView(ctx: Context, name: String) {
+        sp(ctx).edit().putString("group_view", name).apply()
+    }
+
+    /**
+     * 追加画面の前回の設定。親（グループ）のIDごとに1つずつ、JSONのオブジェクトにまとめて持つ。
+     * 最上位へ足した時は "top" のキー。[dev.togar.dynasched.data.AddDefaults] が読み書きする。
+     */
+    fun lastAddJson(ctx: Context): String = sp(ctx).getString("last_add", "{}") ?: "{}"
+
+    fun setLastAddJson(ctx: Context, json: String) {
+        sp(ctx).edit().putString("last_add", json).apply()
+    }
+
     /** 中が全部済んだグループのタブの見せ方（DoneTabs の名前） */
     fun doneTabs(ctx: Context): String = sp(ctx).getString("done_tabs", "END") ?: "END"
 

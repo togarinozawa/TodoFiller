@@ -18,16 +18,23 @@ class ViewMenuTest {
         sort: TaskSort = TaskSort.MANUAL,
         done: DoneMode = DoneMode.INLINE,
         doneTabs: DoneTabs = DoneTabs.END,
+        groupView: GroupView = GroupView.TABS,
         hasTabs: Boolean = true,
         filtering: Boolean = false,
         placeFiltered: Boolean = false
-    ) = ViewMenu.rows(sort, done, doneTabs, hasTabs = hasTabs, filtering = filtering, placeFiltered = placeFiltered)
+    ) = ViewMenu.rows(
+        sort, done, doneTabs, groupView = groupView, hasTabs = hasTabs,
+        filtering = filtering, placeFiltered = placeFiltered
+    )
 
     @Test
     fun 節の順番が決まっている() {
         val titles = rows().filterIsInstance<ViewMenuRow.Section>().map { it.title }
         assertEquals(
-            listOf(ViewMenu.SORT, ViewMenu.DONE, ViewMenu.DONE_TABS, ViewMenu.SHOW, ViewMenu.PLACE, ViewMenu.BULK),
+            listOf(
+                ViewMenu.SORT, ViewMenu.DONE, ViewMenu.GROUP_VIEW, ViewMenu.DONE_TABS,
+                ViewMenu.SHOW, ViewMenu.PLACE, ViewMenu.BULK
+            ),
             titles
         )
     }
@@ -108,6 +115,21 @@ class ViewMenuTest {
         assertTrue(actions.getValue(ViewMenuAction.TabOrder).opensDialog)
         assertFalse(actions.getValue(ViewMenuAction.CollapseAll).opensDialog)
         assertFalse(actions.getValue(ViewMenuAction.GroupsLast).opensDialog)
+    }
+
+    @Test
+    fun `インデントで見せる時は、済んだタブの節を出さない`() {
+        // タブが無いので、タブの見せ方を選ばせても意味が無い
+        val titles = rows(groupView = GroupView.INDENT).filterIsInstance<ViewMenuRow.Section>().map { it.title }
+        assertFalse(titles.contains(ViewMenu.DONE_TABS))
+        assertTrue(titles.contains(ViewMenu.GROUP_VIEW))
+    }
+
+    @Test
+    fun `グループの見せ方は今の方が丸印になる`() {
+        val picked = between(rows(groupView = GroupView.INDENT), ViewMenu.GROUP_VIEW)
+            .filterIsInstance<ViewMenuRow.Choice>().filter { it.selected }
+        assertEquals(listOf(ViewMenuAction.GroupStyle(GroupView.INDENT)), picked.map { it.action })
     }
 
     @Test

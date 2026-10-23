@@ -40,6 +40,7 @@ class HobbyFragment : Fragment() {
     private lateinit var placeFilterText: TextView
     private lateinit var pointPop: TextView
     private lateinit var touchHelper: ItemTouchHelper
+    private lateinit var recycler: RecyclerView
 
     /** 絞り込み。変えるたびに覚える（[Prefs.taskFilter]） */
     private var filter = TaskFilter()
@@ -70,8 +71,20 @@ class HobbyFragment : Fragment() {
         subTabs = root.findViewById(R.id.taskSubTabs)
         placeFilterText = root.findViewById(R.id.placeFilterText)
         pointPop = root.findViewById(R.id.pointPop)
-        val recycler = root.findViewById<RecyclerView>(R.id.recycler)
-        val addButton = root.findViewById<Button>(R.id.addTaskButton)
+        recycler = root.findViewById(R.id.recycler)
+        // 掴んでいる間の指の位置（画面の座標）を拾う。ItemTouchHelper は座標を教えてくれないので。
+        // false を返すので、一覧の動きには口を出さない
+        recycler.setOnTouchListener { _, e ->
+            if (e.actionMasked == android.view.MotionEvent.ACTION_MOVE) {
+                fingerX = e.rawX
+                fingerY = e.rawY
+                fingerKnown = true
+            }
+            false
+        }
+        val addButton = root.findViewById<com.google.android.material.floatingactionbutton.FloatingActionButton>(
+            R.id.addTaskButton
+        )
 
         adapter = HobbyAdapter(
             onToggle = { item, checked -> toggle(item, checked) },
@@ -224,6 +237,7 @@ class HobbyFragment : Fragment() {
             sort = sortMode(),
             done = doneMode(),
             doneTabs = DoneTabs.from(Prefs.doneTabs(ctx)),
+            groupView = groupView(),
             groupsLast = Prefs.taskGroupsLast(ctx),
             hasTabs = tabs.visibility == View.VISIBLE,
             filtering = !placementFilter().isEmpty,
@@ -235,6 +249,13 @@ class HobbyFragment : Fragment() {
                 is ViewMenuAction.Done -> Prefs.setTaskDoneMode(ctx, action.mode.name)
                 is ViewMenuAction.DoneTab -> {
                     Prefs.setDoneTabs(ctx, action.mode.name)
+                    rebuildTabs()
+                }
+                is ViewMenuAction.GroupStyle -> {
+                    Prefs.setGroupView(ctx, action.mode.name)
+                    subTabKey = ""
+                    // インデントに変えたら、タブで開いていた塊は「すべて」に戻す（中身が一覧の全体になる）
+                    if (action.mode == GroupView.INDENT) Prefs.setTaskTab(ctx, GroupTabs.ALL)
                     rebuildTabs()
                 }
                 ViewMenuAction.TabOrder -> { showTabOrder(subRow = false); return@show }
@@ -374,8 +395,12 @@ class HobbyFragment : Fragment() {
 
     // ---- グループのタブ ----
 
+    private fun groupView(): GroupView = GroupView.from(Prefs.groupView(requireContext()))
+
     /** いま選んでいるタブ。無くなっていたら「すべて」に戻す */
     private fun currentTab(): String {
+        // インデントで見せる時は、タブで塊を選ぶ先が無いので常に「すべて」
+        if (groupView() == GroupView.INDENT) return GroupTabs.ALL
         val key = Prefs.taskTab(requireContext())
         return if (GroupTabs.exists(GroupTabs.top(loaded), key)) key else GroupTabs.ALL
     }
@@ -400,6 +425,12 @@ class HobbyFragment : Fragment() {
      */
     private fun rebuildTabs() {
         val ctx = requireContext()
+        if (groupView() == GroupView.INDENT) {
+            tabs.visibility = View.GONE
+            tabs.removeAllTabs()
+            rebuildSubTabs()
+            return
+        }
         val selected = currentTab()
         val list = GroupTabs.arrange(
             GroupTabs.applyOrder(GroupTabs.top(loaded), Prefs.taskTabOrder(ctx)), doneTabsMode(), selected
@@ -502,6 +533,24 @@ class HobbyFragment : Fragment() {
     /** 一番浅く置いた時の親。塊のタブならその塊（下段で選んでいればそちら）、それ以外は最上位 */
     private fun dropRoot(): Long? = groupOfCurrentTab()?.id
 
+    /** タブの上で離した時の入れ先。[view] は大きく見せて、離れたら戻すために持つ */
+    private class TabHit(val key: String, val label: String, val view: View)
+
+    /** 掴んでいる行がいま重なっているタブ（無ければ null）。離した時にそこへ入れる */
+    private var hoverTab: TabHit? = null
+
+    /** この掴みでタブへ入れるのを受け付けるか（タブで選ぶ見せ方で、タブが出ている時だけ） */
+    private var dropToTabs = false
+
+    /**
+     * 指の位置（画面の座標）。**行の真ん中ではなく指で当てる。**
+     * 行の端を掴むと、指はタブの上なのに行の真ん中はまだ一覧の中、ということが起きる
+     */
+    private var fingerX = 0f
+    private var fingerY = 0f
+    /** 掴んでから指が動いたか。動く前の座標は前の掴みの残りなので使わない */
+    private var fingerKnown = false
+
     /** つかんだ時の段。横のずれと足して落とし先の段を出す */
     private var dragBaseLevel = 0
     /** いま指が示している段 */
@@ -547,6 +596,12 @@ class HobbyFragment : Fragment() {
             val row = adapter.rows().getOrNull(holder.bindingAdapterPosition) ?: return
             dragBaseLevel = row.level
             dragLevel = row.level
+            hoverTab = null
+            fingerKnown = false
+            dropToTabs = groupView() == GroupView.TABS &&
+                (tabs.visibility == View.VISIBLE || subTabs.visibility == View.VISIBLE)
+            // 上のタブまで行を描けるように、掴んでいる間だけ切り抜きを止める
+            if (dropToTabs) setDragClipping(false)
             // 掴んだ行はスクロールで結び直されることがあるので、アダプタ側にも覚えさせる
             adapter.draggingId = row.item.id
             showButtons(holder.itemView, false)
@@ -562,14 +617,19 @@ class HobbyFragment : Fragment() {
             dX: Float, dY: Float, actionState: Int, isActive: Boolean
         ) {
             if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && isActive) {
-                val pos = holder.bindingAdapterPosition
-                val above = adapter.rows().getOrNull(pos - 1)
-                val max = if (above == null) 0 else above.level + 1
-                val want = dragBaseLevel + Math.round(dX / stepPx())
-                val next = want.coerceIn(0, max)
-                if (next != dragLevel) {
-                    dragLevel = next
-                    showDragHint(next)
+                // 指がタブの上に来たら「そのグループへ入れる」。その間は段の指定は見ない
+                val hit = if (dropToTabs && fingerKnown) tabAt(fingerX, fingerY) else null
+                if (hit?.key != hoverTab?.key) setHover(hit)
+                if (hit == null) {
+                    val pos = holder.bindingAdapterPosition
+                    val above = adapter.rows().getOrNull(pos - 1)
+                    val max = if (above == null) 0 else above.level + 1
+                    val want = dragBaseLevel + Math.round(dX / stepPx())
+                    val next = want.coerceIn(0, max)
+                    if (next != dragLevel) {
+                        dragLevel = next
+                        showDragHint(next)
+                    }
                 }
             }
             super.onChildDraw(c, rv, holder, dX, dY, actionState, isActive)
@@ -587,6 +647,12 @@ class HobbyFragment : Fragment() {
 
         override fun clearView(rv: RecyclerView, holder: RecyclerView.ViewHolder) {
             val dropIndex = holder.bindingAdapterPosition
+            val movedId = adapter.draggingId
+            val into = hoverTab
+            into?.view?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(100)?.start()
+            hoverTab = null
+            if (dropToTabs) setDragClipping(true)
+            dropToTabs = false
             lift(holder.itemView, false)
             holder.itemView.translationX = 0f
             showButtons(holder.itemView, true)
@@ -594,7 +660,9 @@ class HobbyFragment : Fragment() {
             adapter.draggingId = null
             swipe.isEnabled = true
             dragHintText.visibility = View.GONE
-            applyDrop(dropIndex, dragLevel)
+            // タブの上で離したら、その塊へ入れる。並びの入れ替えはしない
+            if (into != null && movedId != null) moveIntoTab(movedId, into.key, into.label)
+            else applyDrop(dropIndex, dragLevel)
         }
 
         /**
@@ -608,6 +676,8 @@ class HobbyFragment : Fragment() {
             rv: RecyclerView, viewSize: Int, viewSizeOutOfBounds: Int,
             totalSize: Int, msSinceStartScroll: Long
         ): Int {
+            // タブの上にいる間は流さない。流すと、入れ先を選んでいる間に一覧が勝手に上まで走る
+            if (hoverTab != null) return 0
             val direction = if (viewSizeOutOfBounds > 0) 1 else -1
             val depth = (Math.abs(viewSizeOutOfBounds).toFloat() / viewSize).coerceIn(0f, 1f)
             val d = resources.displayMetrics.density
@@ -647,6 +717,94 @@ class HobbyFragment : Fragment() {
             0 -> "最上位に置きます"
             else -> "${level}段目（上のタスクの子）"
         }
+    }
+
+    /** 入れ先のタブが変わった。前のタブは元の大きさに戻し、新しいタブを大きくして手にも返す */
+    private fun setHover(hit: TabHit?) {
+        hoverTab?.view?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(100)?.start()
+        hoverTab = hit
+        if (hit == null) {
+            showDragHint(dragLevel)
+            return
+        }
+        hit.view.animate().scaleX(1.15f).scaleY(1.15f).setDuration(100).start()
+        hit.view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        dragHintText.visibility = View.VISIBLE
+        dragHintText.text = if (hit.key == GroupTabs.ALL) "離すと、最上位に出します"
+            else "離すと「${hit.label}」の中に入ります"
+    }
+
+    /** 指の下にあるタブ。上段と下段の両方を見る */
+    private fun tabAt(x: Float, y: Float): TabHit? {
+        for (bar in listOf(tabs, subTabs)) {
+            if (bar.visibility != View.VISIBLE || !contains(bar, x, y)) continue
+            for (i in 0 until bar.tabCount) {
+                val tab = bar.getTabAt(i) ?: continue
+                val key = tab.tag as? String ?: continue
+                if (contains(tab.view, x, y)) return TabHit(key, tab.text?.toString().orEmpty(), tab.view)
+            }
+        }
+        return null
+    }
+
+    private fun contains(v: View, x: Float, y: Float): Boolean {
+        val l = IntArray(2)
+        v.getLocationOnScreen(l)
+        return x >= l[0] && x < l[0] + v.width && y >= l[1] && y < l[1] + v.height
+    }
+
+    /**
+     * 掴んだ行を一覧の外（上のタブ）まで描けるように、一覧から画面の一番外までの切り抜きを止める／戻す。
+     * **掴んでいる間だけ。**止めたままにすると、スクロールで上に半分出た行がタブの上に描かれる
+     */
+    private fun setDragClipping(off: Boolean) {
+        val top = view ?: return
+        var v: View? = recycler
+        while (v != null) {
+            (v as? ViewGroup)?.let { it.clipChildren = !off; it.invalidate() }
+            if (v === top) break
+            v = v.parent as? View
+        }
+    }
+
+    /**
+     * 行をタブのグループの下へ動かす（最上位なら top へ）。末尾に付け、並びはそのまま保つ。
+     * 自分の中の塊へは入れられない（[GroupTabs.canMoveInto]）。
+     */
+    private fun moveIntoTab(itemId: Long, key: String, label: String) {
+        val ctx = requireContext().applicationContext
+        val moved = loaded.firstOrNull { it.id == itemId } ?: return
+        val target = GroupTabs.groupIdOf(key)   // 「すべて」は null（最上位）
+        if (target == moved.parentId) { render(); return }
+        if (!GroupTabs.canMoveInto(loaded, itemId, target)) {
+            Toast.makeText(requireContext(), "そこには入れられません（自分の中へは動かせません）", Toast.LENGTH_SHORT).show()
+            render()
+            return
+        }
+        val siblings = loaded.filter { it.parentId == target && it.id != itemId }
+            .sortedWith(TaskList.comparator(TaskSort.MANUAL, false))
+            .map { it.id } + itemId
+        Api.async(
+            work = {
+                val repo = Repo.current(ctx)
+                repo.setHobbyParent(ctx, itemId, target)
+                repo.reorderHobby(ctx, siblings)
+                repo.getHobby(ctx)
+            },
+            onSuccess = { all ->
+                if (!isAdded) return@async
+                loaded = all
+                rebuildTabs()
+                render()
+                val where = if (target == null) "最上位" else "「$label」"
+                Toast.makeText(requireContext(), "「${moved.name}」を$where に入れました", Toast.LENGTH_SHORT).show()
+            },
+            onError = { e ->
+                if (!isAdded) return@async
+                Toast.makeText(requireContext(), "動かせませんでした: ${Api.friendlyMessage(e)}", Toast.LENGTH_LONG).show()
+                load()
+            }
+        )
     }
 
     /**
@@ -1048,9 +1206,16 @@ class HobbyFragment : Fragment() {
                 val wantChanged = isLeaf && (want.date != item.wantDate || want.level != item.wantLevel)
                 val wantDate = want.date
                 val wantLevel = want.level
+                // 配下へ配る値。チェックの状態は画面の側で読んでおく（ワーカーから画面に触らない）
+                val spreadPriority = if (spread["priority"]?.isChecked == true) priority else null
+                val spreadLocation = if (spread["location"]?.isChecked == true) location else null
+                val spreadColor = if (spread["color"]?.isChecked == true) color else null
+                val spreadTags = if (spread["tags"]?.isChecked == true) tags else null
+                // 配下の塊（自分も含む）。前回の追加設定もこの値に揃える
+                val groupIds = TaskList.subtreeIds(loaded, item.id).filter { id -> loaded.any { it.parentId == id } }
                 Api.async(
                     work = {
-                        val repo = Repo.current(ctx)
+                        val repo = Repo.current(appCtx)
                         repo.editHobby(
                             appCtx, item.id, name, total, priority, location, note, color, tags
                         )
@@ -1058,10 +1223,11 @@ class HobbyFragment : Fragment() {
                         if (spreadCount > 0) {
                             repo.applyToSubtree(
                                 appCtx, item.id,
-                                priority = if (spread["priority"]?.isChecked == true) priority else null,
-                                location = if (spread["location"]?.isChecked == true) location else null,
-                                color = if (spread["color"]?.isChecked == true) color else null,
-                                tags = if (spread["tags"]?.isChecked == true) tags else null
+                                priority = spreadPriority, location = spreadLocation,
+                                color = spreadColor, tags = spreadTags
+                            )
+                            dev.togar.dynasched.data.AddDefaults.overrideFor(
+                                appCtx, groupIds, spreadLocation, spreadPriority, spreadColor, spreadTags
                             )
                         }
                     },

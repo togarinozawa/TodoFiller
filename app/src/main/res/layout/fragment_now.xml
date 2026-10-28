@@ -49,6 +49,18 @@
                 android:text=""
                 android:textColor="@color/primary"
                 android:textSize="13sp" />
+
+            <!-- いまやるだけの絞り込み（タスク画面の絞り込みとは別） -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/nowFilter"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:minWidth="0dp"
+                android:text="絞り込み"
+                android:textColor="@color/primary"
+                android:textSize="13sp" />
         </LinearLayout>
 
         <TextView

@@ -48,7 +48,7 @@ object Backup {
         // v51で足したもの
         "priority_levels", "weekday_places",
         // v52で足したもの
-        "group_view", "last_add"
+        "group_view", "last_add", "now_filter"
     )
 
     /** 控える表。端末にある表から、控えないものを除く */

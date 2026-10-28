@@ -82,7 +82,7 @@ class ViewMenuTest {
             listOf(
                 ViewMenuAction.GroupsLast, ViewMenuAction.TabOrder,
                 ViewMenuAction.PlaceFiltered, ViewMenuAction.PlaceAll,
-                ViewMenuAction.PickTomorrow, ViewMenuAction.BulkPlace,
+                ViewMenuAction.PickDay(0), ViewMenuAction.PickDay(1), ViewMenuAction.BulkPlace,
                 ViewMenuAction.CollapseAll, ViewMenuAction.ExpandAll
             ),
             actions.map { it.action }

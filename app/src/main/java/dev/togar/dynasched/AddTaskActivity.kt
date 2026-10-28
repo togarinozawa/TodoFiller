@@ -99,6 +99,10 @@ class AddTaskActivity : AppCompatActivity() {
         val repeat = dev.togar.dynasched.ui.RepeatPickerView(
             this, if (intent.getBooleanExtra(EXTRA_REPEAT, false)) "daily" else null
         )
+        // 締切（それまでに終わらせる日）。繰り返す時は使わない（習慣は毎回作り直すので）
+        val dueButton = dev.togar.dynasched.ui.DueDateButton(this, "")
+        noteParent.addView(TextView(this).apply { text = "締切"; textSize = 12f }, noteParent.indexOfChild(noteInput))
+        noteParent.addView(dueButton, noteParent.indexOfChild(noteInput))
         if (!isChild) {
             noteParent.addView(
                 TextView(this).apply { text = "繰り返す"; textSize = 12f },
@@ -146,6 +150,7 @@ class AddTaskActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
+            val due = dueButton.date
             saveButton.isEnabled = false
             val ctx = applicationContext
             val pid = if (isChild) parentId else null
@@ -153,7 +158,8 @@ class AddTaskActivity : AppCompatActivity() {
                 work = {
                     val repo = Repo.current(ctx)
                     if (kind == null) {
-                        repo.addHobby(ctx, name, pid, total, priority, location, note, color, tagInput.value)
+                        val id = repo.addHobby(ctx, name, pid, total, priority, location, note, color, tagInput.value)
+                        if (due.isNotEmpty() && id > 0) repo.setHobbyDue(ctx, id, due)
                         // 次にこの親へ足す時の初期値になる
                         AddDefaults.remember(ctx, pid, AddDefaults(location, priority, color, tagInput.value, total))
                     } else {

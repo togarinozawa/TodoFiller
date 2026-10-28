@@ -27,13 +27,15 @@ import dev.togar.dynasched.widget.SuggestWidgetProvider
  * もとはタスク画面の上の欄だった。一覧を見る時と「何をやるか言ってほしい」時は
  * 別の気分なので、タブを分けた。
  *
- * 選び方は [NowTasks]。ドパチルの警告画面が読みに来るものと同じ。
- * タスク画面の絞り込みは見ない（配置の絞り込みだけ見る）。
+ * 選び方と並び（やる日 → 優先度と締切の近さ）は [NowTasks]。ドパチルの警告画面が読みに来るものと同じ。
+ * 絞り込みは**このタブ専用**（[Prefs.nowFilter]）。タスク画面の絞り込みとは別に持つ。
+ * ドパチルにもこの絞り込みで渡すので、タブと警告画面で違う物を言わない。
  */
 class NowFragment : Fragment() {
 
     private lateinit var placeButton: Button
     private lateinit var timeButton: Button
+    private lateinit var filterButton: com.google.android.material.button.MaterialButton
     private lateinit var placeFilterText: TextView
     private lateinit var card: View
     private lateinit var parentText: TextView
@@ -53,6 +55,7 @@ class NowFragment : Fragment() {
         val root = inflater.inflate(R.layout.fragment_now, container, false)
         placeButton = root.findViewById(R.id.nowPlace)
         timeButton = root.findViewById(R.id.nowTime)
+        filterButton = root.findViewById(R.id.nowFilter)
         placeFilterText = root.findViewById(R.id.nowPlaceFilter)
         card = root.findViewById(R.id.nowCard)
         parentText = root.findViewById(R.id.nowParent)
@@ -65,6 +68,11 @@ class NowFragment : Fragment() {
 
         placeButton.setOnClickListener { pickPlace() }
         timeButton.setOnClickListener { pickMinutes() }
+        filterButton.setOnClickListener { openFilter() }
+        // 絞り込みの画面で「絞り込む」を押された
+        parentFragmentManager.setFragmentResultListener(TaskFilterPage.RESULT, viewLifecycleOwner) { _, _ ->
+            refresh()
+        }
         titleText.setOnClickListener { showDetail() }
         parentText.setOnClickListener { showDetail() }
         root.findViewById<Button>(R.id.nowDetail).setOnClickListener { showDetail() }
@@ -84,7 +92,7 @@ class NowFragment : Fragment() {
     private fun refresh() {
         val app = requireContext().applicationContext
         val override = minutesOverride
-        Api.async({ NowTasks.pick(app, Prefs.placeFilter(app), override) }, { next ->
+        Api.async({ NowTasks.pick(app, Prefs.nowFilter(app), override) }, { next ->
             if (!isAdded) return@async
             // 同じ候補がまだあれば、「ほかの」で送った位置を保つ
             val cur = now?.items?.getOrNull(index)
@@ -102,15 +110,15 @@ class NowFragment : Fragment() {
         val n = now ?: return
         placeButton.text = "📍 ${Places.name(Places.all(ctx), n.place)} ▾"
         timeButton.text = "⏱ ${n.minutes}分 ▾"
-        val pf = Prefs.placeFilter(ctx)
-        placeFilterText.visibility = if (pf == null) View.GONE else View.VISIBLE
-        placeFilterText.text = "タスクは「配置の絞り込み」に当たるものだけ出しています"
+        renderFilter()
 
         val item = n.items.getOrNull(index)
         if (item == null) {
             parentText.visibility = View.GONE
-            titleText.text = "いまできるものはありません。休みましょう"
-            metaText.text = "場所か時間を変えると、出てくるかもしれません"
+            val filtered = !Prefs.nowFilter(ctx).isEmpty
+            titleText.text = if (filtered) "この条件で、いまできるものはありません" else "いまできるものはありません。休みましょう"
+            metaText.text = if (filtered) "絞り込みを外すか、場所か時間を変えると出てくるかもしれません"
+                else "場所か時間を変えると、出てくるかもしれません"
             buttons.visibility = View.GONE
             othersTitle.visibility = View.GONE
             others.removeAllViews()
@@ -142,11 +150,43 @@ class NowFragment : Fragment() {
         }
     }
 
+    /**
+     * 絞り込みのボタンと、その下の説明。絞っている間は色を付け、何で絞っているかを出す
+     * （気付かないまま「候補が出ない」と思わないように）
+     */
+    private fun renderFilter() {
+        val ctx = requireContext()
+        val f = Prefs.nowFilter(ctx)
+        val on = !f.isEmpty
+        filterButton.text = if (on) "絞り込み・${f.count}" else "絞り込み"
+        filterButton.backgroundTintList = android.content.res.ColorStateList.valueOf(
+            if (on) ctx.getColor(R.color.primary) else android.graphics.Color.TRANSPARENT
+        )
+        filterButton.setTextColor(ctx.getColor(if (on) R.color.white else R.color.primary))
+        placeFilterText.visibility = if (on) View.VISIBLE else View.GONE
+        if (on) {
+            val levels = Priorities.all(ctx)
+            placeFilterText.text = "絞り込み中: " + f.summary(
+                { id -> Places.taskLabel(Places.all(ctx), id) }, { null }, { p -> Priorities.name(levels, p) }
+            ).joinToString(" × ")
+        }
+    }
+
+    /** 絞り込みの画面。タスク画面と同じく右から重ねて出す */
+    private fun openFilter() {
+        parentFragmentManager.beginTransaction()
+            .setCustomAnimations(R.anim.filter_enter, R.anim.filter_exit, R.anim.filter_enter, R.anim.filter_exit)
+            .add(R.id.container, TaskFilterPage.forNow())
+            .addToBackStack(TaskFilterPage.RESULT)
+            .commit()
+    }
+
     /** 時間・優先度（目安つき）・やる日 */
     private fun meta(item: SuggestItem): String {
         val n = now ?: return ""
         val parts = arrayListOf("${item.minutes}分", NowTasks.reason(item, Priorities.all(requireContext())))
-        n.tasks[item.id]?.takeIf { item.kind == "hobby" }?.let { t ->
+        // 今日の分のやる日は、理由（「今日やる（絶対）」）に出ている。先の日に決めた物だけ印を足す
+        n.tasks[item.id]?.takeIf { item.kind == "hobby" && item.wantToday == 0 }?.let { t ->
             Want.badge(t.wantDate, t.wantLevel).takeIf { it.isNotEmpty() }?.let { parts.add(it) }
         }
         return parts.joinToString(" ・ ")

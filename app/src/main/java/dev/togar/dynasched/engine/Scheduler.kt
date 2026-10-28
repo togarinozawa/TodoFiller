@@ -40,7 +40,9 @@ data class HobbyRow(
     val createdAt: String = "",
     /** やる日（yyyy-MM-dd）と強さ。[Want] */
     val wantDate: String = "",
-    val wantLevel: Int = 0
+    val wantLevel: Int = 0,
+    /** 締切（yyyy-MM-dd）。いまやるの並びに使う。配置には使っていない */
+    val dueDate: String = ""
 )
 
 /** 単発タスクを置く順 */

@@ -28,6 +28,7 @@
             android:textSize="22sp" />
 
         <TextView
+            android:id="@+id/filterTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"

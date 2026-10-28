@@ -37,10 +37,14 @@ interface Repo {
 
     /** 片付いた数・増えた数を数えるための最小限の行（[dev.togar.dynasched.ui.Stats]） */
     fun statRows(ctx: Context): List<dev.togar.dynasched.ui.StatRow>
+    /** 足したタスクの id を返す */
     fun addHobby(
         ctx: Context, name: String, parentId: Long?, durationMinutes: Int,
         priority: Int, location: String, note: String, color: String, tags: String = ""
-    )
+    ): Long
+
+    /** 締切を決める。空なら外す（yyyy-MM-dd） */
+    fun setHobbyDue(ctx: Context, id: Long, date: String)
     fun editHobby(
         ctx: Context, id: Long, name: String, durationMinutes: Int,
         priority: Int, location: String, note: String, color: String, tags: String = ""

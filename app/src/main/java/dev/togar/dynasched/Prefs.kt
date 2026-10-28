@@ -105,6 +105,14 @@ object Prefs {
         return if (ok(manual)) manual!! else Places.HOME
     }
 
+    /** その日のいつもの場所。曜日で決めていなければ家（カレンダーで枠を作る時の初期値） */
+    fun basePlaceOn(ctx: Context, date: java.time.LocalDate): String =
+        basePlaceOn(Places.all(ctx).map { it.id }, weekdayPlaces(ctx), date)
+
+    /** [basePlaceOn] の中身（テストで固定する）。消した場所を指していれば家 */
+    fun basePlaceOn(placeIds: List<String>, weekdays: List<String>, date: java.time.LocalDate): String =
+        weekdays.getOrNull(date.dayOfWeek.value - 1)?.takeIf { it.isNotEmpty() && it in placeIds } ?: Places.HOME
+
     /** 曜日ごとのいつもの場所。月曜から7つ。空は「決めない」 */
     fun weekdayPlaces(ctx: Context): List<String> {
         val raw = (sp(ctx).getString("weekday_places", "") ?: "").split(",")
@@ -311,6 +319,17 @@ object Prefs {
 
     fun setTaskFilter(ctx: Context, filter: dev.togar.dynasched.ui.TaskFilter) {
         sp(ctx).edit().putString("task_filter", filter.encode()).apply()
+    }
+
+    /**
+     * いまやるタブの絞り込み。タスク画面の絞り込みとは別に持つ（一覧を眺める時と、やる物を選ぶ時は別の気分）。
+     * ドパチルの警告画面に渡す候補も、これで絞る（いまやるタブと同じ物を出す）
+     */
+    fun nowFilter(ctx: Context): dev.togar.dynasched.ui.TaskFilter =
+        dev.togar.dynasched.ui.TaskFilter.decode(sp(ctx).getString("now_filter", ""))
+
+    fun setNowFilter(ctx: Context, filter: dev.togar.dynasched.ui.TaskFilter) {
+        sp(ctx).edit().putString("now_filter", filter.encode()).apply()
     }
 
     /**

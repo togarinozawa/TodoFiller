@@ -22,6 +22,7 @@ import dev.togar.dynasched.db.str
 import dev.togar.dynasched.db.values
 import dev.togar.dynasched.engine.AttemptAgg
 import dev.togar.dynasched.engine.HobbyRow
+import dev.togar.dynasched.integration.DopaSignal
 import dev.togar.dynasched.engine.MaterialRow
 import dev.togar.dynasched.engine.PlanEngine
 import dev.togar.dynasched.engine.Scheduler
@@ -53,8 +54,12 @@ object LocalRepo : Repo {
         val end = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateYmd)?.let {
             ymd(Date(it.time + 7L * 24 * 3600 * 1000))
         } ?: dateYmd
+        // タスクの予定は、タスクの方を一覧で片付けても予定の行は未完了のまま残る。
+        // タスクが済んでいれば予定も済んだものとして返す（ドパチルの制限がそこで解けるように）
         return LocalDb.get(ctx).readableDatabase.rawQuery(
-            "SELECT * FROM scheduled_events WHERE start_datetime >= ? AND start_datetime < ? ORDER BY start_datetime",
+            "SELECT e.*, COALESCE(h.is_completed,0) AS task_done FROM scheduled_events e " +
+                "LEFT JOIN hobby_tasks h ON h.id = e.hobby_task_id " +
+                "WHERE e.start_datetime >= ? AND e.start_datetime < ? ORDER BY e.start_datetime",
             arrayOf("${dateYmd}T00:00:00", "${end}T00:00:00")
         ).mapRows { c ->
             ScheduledEvent(
@@ -63,7 +68,7 @@ object LocalRepo : Repo {
                 startDatetime = c.str("start_datetime"),
                 endDatetime = c.str("end_datetime"),
                 eventType = c.str("event_type", "study"),
-                isCompleted = c.bool("is_completed"),
+                isCompleted = c.bool("is_completed") || c.bool("task_done"),
                 materialId = c.longOrNull("material_id")?.let { if (it > 0) it else null },
                 isManual = c.bool("is_manual")
             )
@@ -71,6 +76,7 @@ object LocalRepo : Repo {
     }
 
     override fun completeTask(ctx: Context, id: Long, problems: Int) {
+        DopaSignal.changed(ctx)
         val db = LocalDb.get(ctx).writableDatabase
         val ev = db.rawQuery("SELECT * FROM scheduled_events WHERE id=?", arrayOf(id.toString()))
             .mapRows { c ->
@@ -104,6 +110,7 @@ object LocalRepo : Repo {
     }
 
     override fun skipTask(ctx: Context, id: Long) {
+        DopaSignal.changed(ctx)
         LocalDb.get(ctx).writableDatabase
             .execSQL("DELETE FROM scheduled_events WHERE id=? AND COALESCE(is_completed,0)=0", arrayOf(id))
         runScheduler(ctx, Prefs.fillDays(ctx))
@@ -123,6 +130,7 @@ object LocalRepo : Repo {
     private const val PLAN_DAYS = 45
 
     override fun runScheduler(ctx: Context, days: Int): RunReport {
+        DopaSignal.changed(ctx)
         val db = LocalDb.get(ctx).writableDatabase
         val planDays = maxOf(days, PLAN_DAYS)
         val calId = Prefs.calendarId(ctx) ?: CalendarRepo.targetCalendar(ctx)?.id
@@ -310,11 +318,13 @@ object LocalRepo : Repo {
                 createdAt = c.str("created_at"),
                 routineId = c.long("routine_id"),
                 wantDate = c.str("want_date"),
-                wantLevel = c.int("want_level")
+                wantLevel = c.int("want_level"),
+                dueDate = c.str("due_date")
             )
         }
 
     override fun setHobbyWant(ctx: Context, ids: Collection<Long>, date: String, level: Int) {
+        DopaSignal.changed(ctx)
         if (ids.isEmpty()) return
         val db = LocalDb.get(ctx).writableDatabase
         val (d, l) = if (date.isEmpty() || level <= 0) "" to 0 else date to level.coerceIn(1, 2)
@@ -358,7 +368,8 @@ object LocalRepo : Repo {
     override fun addHobby(
         ctx: Context, name: String, parentId: Long?, durationMinutes: Int,
         priority: Int, location: String, note: String, color: String, tags: String
-    ) {
+    ): Long {
+        DopaSignal.changed(ctx)
         val db = LocalDb.get(ctx).writableDatabase
         // 追加は同じ親の末尾へ。既存の手動順を崩さない
         val next = db.rawQuery(
@@ -366,7 +377,7 @@ object LocalRepo : Repo {
                 (if (parentId == null) "parent_id IS NULL" else "parent_id=?"),
             if (parentId == null) null else arrayOf(parentId.toString())
         ).mapRows { it.int("n") }.firstOrNull() ?: 1
-        db.insert("hobby_tasks", null, values(
+        val id = db.insert("hobby_tasks", null, values(
             "name" to name, "parent_id" to parentId, "duration_minutes" to durationMinutes,
             "priority" to priority, "location" to location, "note" to note, "color" to color,
             "tags" to Tags.normalize(tags),
@@ -374,10 +385,19 @@ object LocalRepo : Repo {
             "created_at" to nowNaive()
         ))
         NotionSyncer.syncSoon(ctx)
+        return id
+    }
+
+    override fun setHobbyDue(ctx: Context, id: Long, date: String) {
+        DopaSignal.changed(ctx)
+        LocalDb.get(ctx).writableDatabase.execSQL(
+            "UPDATE hobby_tasks SET due_date=? WHERE id=?", arrayOf(date, id)
+        )
     }
 
 
     override fun reorderHobby(ctx: Context, orderedIds: List<Long>) {
+        DopaSignal.changed(ctx)
         val db = LocalDb.get(ctx).writableDatabase
         db.beginTransaction()
         try {
@@ -393,6 +413,7 @@ object LocalRepo : Repo {
     }
 
     override fun setHobbyParent(ctx: Context, id: Long, parentId: Long?) {
+        DopaSignal.changed(ctx)
         // 自分の子孫を親にすると木が輪になって、一覧が二度と出てこなくなる
         if (parentId != null && (parentId == id || isDescendant(ctx, parentId, id))) return
         val db = LocalDb.get(ctx).writableDatabase
@@ -410,6 +431,7 @@ object LocalRepo : Repo {
     }
 
     override fun setHobbyPriority(ctx: Context, id: Long, priority: Int) {
+        DopaSignal.changed(ctx)
         LocalDb.get(ctx).writableDatabase
             .execSQL("UPDATE hobby_tasks SET priority=? WHERE id=?", arrayOf(priority, id))
         NotionSyncer.markDirty(ctx, id)
@@ -439,6 +461,7 @@ object LocalRepo : Repo {
         }
 
     override fun saveRoutine(ctx: Context, routine: Routine): Long {
+        DopaSignal.changed(ctx)
         val db = LocalDb.get(ctx).writableDatabase
         val v = values(
             "name" to routine.name, "kind" to routine.kind,
@@ -456,6 +479,7 @@ object LocalRepo : Repo {
     }
 
     override fun deleteRoutine(ctx: Context, id: Long) {
+        DopaSignal.changed(ctx)
         LocalDb.get(ctx).writableDatabase.execSQL("DELETE FROM routines WHERE id=?", arrayOf(id))
     }
 
@@ -503,15 +527,19 @@ object LocalRepo : Repo {
             )
         }
 
-    override fun addSlot(ctx: Context, slot: Slot): Long =
-        LocalDb.get(ctx).writableDatabase.insert("availability", null, slotValues(slot))
+    override fun addSlot(ctx: Context, slot: Slot): Long {
+        DopaSignal.changed(ctx)
+        return LocalDb.get(ctx).writableDatabase.insert("availability", null, slotValues(slot))
+    }
 
     override fun updateSlot(ctx: Context, slot: Slot) {
+        DopaSignal.changed(ctx)
         LocalDb.get(ctx).writableDatabase
             .update("availability", slotValues(slot), "id=?", arrayOf(slot.id.toString()))
     }
 
     override fun deleteSlot(ctx: Context, id: Long) {
+        DopaSignal.changed(ctx)
         LocalDb.get(ctx).writableDatabase.execSQL("DELETE FROM availability WHERE id=?", arrayOf(id))
     }
 
@@ -537,6 +565,7 @@ object LocalRepo : Repo {
 
     /** 予定を動かす。動かした物は手で置いた物として扱う（組み直しで戻さない） */
     override fun moveEvent(ctx: Context, id: Long, start: String, end: String) {
+        DopaSignal.changed(ctx)
         LocalDb.get(ctx).writableDatabase.execSQL(
             "UPDATE scheduled_events SET start_datetime=?, end_datetime=?, is_manual=1 WHERE id=?",
             arrayOf(start, end, id)
@@ -545,6 +574,7 @@ object LocalRepo : Repo {
 
     /** 単発タスクを時間を決めて置く */
     override fun placeTask(ctx: Context, hobbyTaskId: Long, start: String, end: String) {
+        DopaSignal.changed(ctx)
         val item = getHobbyItem(ctx, hobbyTaskId) ?: return
         LocalDb.get(ctx).writableDatabase.insert("scheduled_events", null, values(
             "title" to item.name, "start_datetime" to start, "end_datetime" to end,
@@ -561,6 +591,7 @@ object LocalRepo : Repo {
 
     /** 置いた予定を外す。タスクそのものは残る */
     override fun unplaceEvent(ctx: Context, id: Long) {
+        DopaSignal.changed(ctx)
         LocalDb.get(ctx).writableDatabase.execSQL("DELETE FROM scheduled_events WHERE id=?", arrayOf(id))
     }
 
@@ -593,6 +624,7 @@ object LocalRepo : Repo {
     }
 
     override fun setHobbiesLocation(ctx: Context, ids: Collection<Long>, location: String) {
+        DopaSignal.changed(ctx)
         if (ids.isEmpty()) return
         val db = LocalDb.get(ctx).writableDatabase
         db.beginTransaction()
@@ -633,6 +665,7 @@ object LocalRepo : Repo {
         ctx: Context, parentId: Long,
         priority: Int?, location: String?, color: String?, tags: String?
     ) {
+        DopaSignal.changed(ctx)
         val sets = ArrayList<String>()
         val args = ArrayList<Any>()
         priority?.let { sets.add("priority=?"); args.add(it) }
@@ -692,6 +725,7 @@ object LocalRepo : Repo {
         ctx: Context, id: Long, name: String, durationMinutes: Int,
         priority: Int, location: String, note: String, color: String, tags: String
     ) {
+        DopaSignal.changed(ctx)
         LocalDb.get(ctx).writableDatabase.update("hobby_tasks", values(
             "name" to name, "duration_minutes" to durationMinutes, "priority" to priority,
             "location" to location, "note" to note, "color" to color,
@@ -708,6 +742,7 @@ object LocalRepo : Repo {
     override fun setHobbyCompleted(
         ctx: Context, id: Long, completed: Boolean
     ): List<dev.togar.dynasched.ui.Award> {
+        DopaSignal.changed(ctx)
         LocalDb.get(ctx).writableDatabase.update("hobby_tasks", values(
             "is_completed" to completed,
             "completed_at" to if (completed) nowNaive() else null
@@ -715,11 +750,18 @@ object LocalRepo : Repo {
         // dirty は付けない。完了はスキマスが正なので、次の同期で食い違いとして
         // 拾われる。圏外で落ちても繋がった時に勝手に揃う
         NotionSyncer.syncSoon(ctx)
+        // ドパチルへ送り直す。片付けたタスクの予定が窓から外れ、そこで制限が解ける
+        try {
+            dev.togar.dynasched.api.ScheduleRepo.refresh(ctx, java.time.LocalDate.now().toString(), force = true)
+        } catch (e: Exception) {
+            // 送れなくても完了は済んでいる。窓は終了時刻で勝手に解ける
+        }
         // 外した時はオヤスギを戻さない（付け直して稼げないよう、入るのは1タスク1回だけ）
         return if (completed) award(ctx, id) else emptyList()
     }
 
     override fun deleteHobby(ctx: Context, id: Long) {
+        DopaSignal.changed(ctx)
         val db = LocalDb.get(ctx).writableDatabase
         // 子も一緒に消す（サーバー版と同じ）
         val ids = db.rawQuery(
@@ -761,18 +803,21 @@ object LocalRepo : Repo {
     }
 
     override fun addMaterial(ctx: Context, m: MaterialInput) {
+        DopaSignal.changed(ctx)
         val db = LocalDb.get(ctx).writableDatabase
         val id = db.insert("materials", null, materialValues(m))
         syncDeadlineToCalendar(ctx, id, m.name, m.deadline)
     }
 
     override fun editMaterial(ctx: Context, id: Long, m: MaterialInput) {
+        DopaSignal.changed(ctx)
         LocalDb.get(ctx).writableDatabase
             .update("materials", materialValues(m), "id=?", arrayOf(id.toString()))
         syncDeadlineToCalendar(ctx, id, m.name, m.deadline)
     }
 
     override fun deleteMaterial(ctx: Context, id: Long) {
+        DopaSignal.changed(ctx)
         val db = LocalDb.get(ctx).writableDatabase
         val calEventId = db.rawQuery("SELECT cal_event_id FROM materials WHERE id=?", arrayOf(id.toString()))
             .mapRows { it.longOrNull("cal_event_id") }.firstOrNull()
@@ -782,6 +827,7 @@ object LocalRepo : Repo {
     }
 
     override fun recordAttempt(ctx: Context, id: Long, problems: Int, minutes: Int, eventId: Long?) {
+        DopaSignal.changed(ctx)
         if (problems <= 0) return
         val eng = engine(ctx)
         val m = materialRow(ctx, id) ?: return
@@ -798,6 +844,7 @@ object LocalRepo : Repo {
     }
 
     override fun undoAttempt(ctx: Context, id: Long) {
+        DopaSignal.changed(ctx)
         val db = LocalDb.get(ctx).writableDatabase
         val last = db.rawQuery(
             "SELECT id, problems FROM attempts WHERE material_id=? ORDER BY id DESC LIMIT 1",
@@ -849,43 +896,50 @@ object LocalRepo : Repo {
     override fun getSuggestions(
         ctx: Context, loc: String, min: Int, limit: Int, tags: Set<String>
     ): List<SuggestItem> {
-        val out = ArrayList<SuggestItem>()
+        // 候補と、並べるための材料。並べ方は Ranking（タスクと教材を同じ物差しで）
+        val out = ArrayList<Pair<Ranking.Input, SuggestItem>>()
         val minutes = min.coerceIn(5, 600)
+        fun ranked() = out.sortedWith(compareBy(Ranking.ORDER) { it.first }).map { it.second }
 
         // タグで絞る時は、そのタグの付いた単発タスクだけを候補にする。
         // 教材にはタグが無いので、絞り込み中は教材を出さない
         val allowed = if (tags.isEmpty()) null
             else getHobby(ctx).filter { Tags.hasAny(it, tags) }.mapTo(HashSet()) { it.id }
 
-        // やる日を今日（か過ぎた日）に決めた物を先に。先の日に決めた物は最後に回す
-        // （今日の空きで消化してしまうと、その日に決めた意味が無くなる。出すだけは出す）
         val today = java.time.LocalDate.now().toString()
-        val hobbies = hobbyRows(ctx).sortedWith(
-            compareByDescending<HobbyRow> { Want.rankOn(it.wantDate, it.wantLevel, today) }
-                .thenBy { if (Want.allowedOn(it.wantDate, today)) 0 else 1 }
-        )
-        for (h in hobbies) {
+        val levels = dev.togar.dynasched.Priorities.all(ctx)
+        for (h in hobbyRows(ctx)) {
             if (allowed != null && h.id !in allowed) continue
             val dur = maxOf(15, h.durationMinutes)
             if (dur > minutes) continue
             if (!(h.location == "anywhere" || loc == "anywhere" || h.location == loc)) continue
-            out.add(SuggestItem("hobby", h.id, h.name, dur, h.priority, 0))
+            val want = Want.rankOn(h.wantDate, h.wantLevel, today)
+            val due = daysUntil(h.dueDate)
+            out.add(Ranking.Input(
+                wantToday = want,
+                dueDays = due,
+                // 先の日に決めた物は最後に回す（出すだけは出す）
+                wantLater = !Want.allowedOn(h.wantDate, today),
+                priority = Ranking.taskPriority(dev.togar.dynasched.Priorities.rankOf(levels, h.priority), levels.size),
+                createdAt = h.createdAt
+            ) to SuggestItem("hobby", h.id, h.name, dur, h.priority, 0, dueDays = due, wantToday = want))
         }
-        if (allowed != null) return out.take(limit.coerceIn(1, 100))
+        if (allowed != null) return ranked().take(limit.coerceIn(1, 100))
 
         val eng = engine(ctx)
         val todayMs = System.currentTimeMillis()
-        val scored = ArrayList<Pair<Int, SuggestItem>>()
         for (m in materialRows(ctx)) {
             val dlMs = Scheduler.parseDeadlineMillis(m.deadline) ?: continue
             val daysTo = Math.ceil((dlMs - todayMs).toDouble() / Scheduler.DAY_MS).toInt()
             if (daysTo < 0) continue
             val need = m.place
             if (!(need == "anywhere" || loc == "anywhere" || need == loc)) continue
-            m.prereqMaterialId?.let { pid ->
-                val p = materialRows(ctx).firstOrNull { it.id == pid }
-                if (p != null && eng.stateOf(p).finishedRounds < 1) return@let
-            }
+            // 前提の教材が1周終わるまでは出さない（配置と同じ決まり）。
+            // 以前は return@let で let を抜けるだけになっていて、素通りしていた
+            val blocked = m.prereqMaterialId?.let { pid ->
+                materialRows(ctx).firstOrNull { it.id == pid }?.let { eng.stateOf(it).finishedRounds < 1 }
+            } ?: false
+            if (blocked) continue
             val st = eng.stateOf(m)
             if (st.remainingProblems <= 0) continue
             val remaining = eng.remainingMinutes(m, st)
@@ -894,12 +948,10 @@ object LocalRepo : Repo {
             if (chunk < 15) continue
             val n = eng.problemsForMinutes(m, st, chunk)
             val label = if (st.plannedRounds > 1) "${m.name} ${st.round}周目 ${n}問" else "${m.name} ${n}問"
-            val urgency = m.priority * 2 + maxOf(0, 30 - daysTo)
-            scored.add(urgency to SuggestItem("material", m.id, label, chunk, m.priority, n))
+            out.add(Ranking.Input(priority = Ranking.materialPriority(m.priority), dueDays = daysTo) to
+                SuggestItem("material", m.id, label, chunk, m.priority, n, dueDays = daysTo))
         }
-        scored.sortByDescending { it.first }
-        out.addAll(scored.map { it.second })
-        return out.take(limit.coerceIn(1, 100))
+        return ranked().take(limit.coerceIn(1, 100))
     }
 
     // ---- 内部 ----
@@ -963,6 +1015,15 @@ object LocalRepo : Repo {
         return all.filter { it.id in ok }
     }
 
+    /** 今日から締切（yyyy-MM-dd）まで何日か。無ければ null。過ぎていれば 0 */
+    private fun daysUntil(date: String): Int? {
+        if (date.isEmpty()) return null
+        return try {
+            java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), java.time.LocalDate.parse(date))
+                .toInt().coerceAtLeast(0)
+        } catch (e: Exception) { null }
+    }
+
     private fun hobbyRows(ctx: Context): List<HobbyRow> =
         LocalDb.get(ctx).readableDatabase.rawQuery(
             "SELECT * FROM hobby_tasks WHERE is_active=1 AND COALESCE(is_completed,0)=0 " +
@@ -978,7 +1039,8 @@ object LocalRepo : Repo {
                 parentId = c.longOrNull("parent_id"),
                 createdAt = c.str("created_at"),
                 wantDate = c.str("want_date"),
-                wantLevel = c.int("want_level")
+                wantLevel = c.int("want_level"),
+                dueDate = c.str("due_date")
             )
         }
 

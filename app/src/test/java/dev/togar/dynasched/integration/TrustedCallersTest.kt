@@ -17,6 +17,13 @@ class TrustedCallersTest {
 
     private val oldPc = "827020ecce900217b5523d8a574fe2fb93a0acd1dbc3e04f9e72720509623c83"
     private val thisPc = "cf3470b1af34854262db3b8ce5794797c6936c770e2ecb0f45557f463cd489a6"
+    private val ownKey = "d4a015b4a3fb8d39541ad54efdd31ebb3b0376f511a44ccc42c7051859e9ea73"
+
+    @Test
+    fun `いまのドパチル（専用の鍵）が読める`() {
+        // 0.42 から専用の鍵。これが抜けると、ドパチルが実装しても黙って何も出ない
+        assertTrue(TrustedCallers.allowed("com.dopachiru", listOf(ownKey)))
+    }
 
     @Test
     fun `ドパチルの鍵ならどちらのPCで作ったものでも読める`() {
@@ -59,5 +66,9 @@ class TrustedCallersTest {
         assertEquals("優先度 高", NowTasks.reason(SuggestItem("hobby", 1, "x", 30, 8, 0)))
         assertEquals("優先度 低", NowTasks.reason(SuggestItem("hobby", 1, "x", 30, 3, 0)))
         assertEquals("予定（教材）", NowTasks.reason(SuggestItem("material", 1, "x", 30, 5, 10)))
+        assertEquals("予定（教材）・締切まで3日", NowTasks.reason(SuggestItem("material", 1, "x", 30, 5, 10, dueDays = 3)))
+        assertEquals("予定（教材）・締切は今日", NowTasks.reason(SuggestItem("material", 1, "x", 30, 5, 10, dueDays = 0)))
+        assertEquals("今日やる（絶対）・優先度 中",
+            NowTasks.reason(SuggestItem("hobby", 1, "x", 30, 5, 0, wantToday = dev.togar.dynasched.data.Want.MUST)))
     }
 }

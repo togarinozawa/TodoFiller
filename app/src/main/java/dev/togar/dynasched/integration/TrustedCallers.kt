@@ -17,10 +17,12 @@ object TrustedCallers {
     const val DOPACHIRU = "com.dopachiru"
 
     /**
-     * ドパチルの署名。どちらもドパチルを作ってきたPCのデバッグ鍵。
+     * ドパチル（0.44 から FlexHarness。パッケージ名は com.dopachiru のまま）の署名。
      * ドパチルを別の鍵で作り直したら、ここに足す（`apksigner verify --print-certs` の SHA-256）
      */
     private val DOPACHIRU_CERTS = setOf(
+        // 専用の鍵（0.42 から。CN=dopachiru）。いまのドパチルはこれ
+        "d4a015b4a3fb8d39541ad54efdd31ebb3b0376f511a44ccc42c7051859e9ea73",
         // 前のPC（ドパチル 0.40 まで）
         "827020ecce900217b5523d8a574fe2fb93a0acd1dbc3e04f9e72720509623c83",
         // いまのPC（ドパチル 0.41 から）

@@ -48,7 +48,8 @@ sealed class ViewMenuAction {
     object PlaceAll : ViewMenuAction()
     object CollapseAll : ViewMenuAction()
     object BulkPlace : ViewMenuAction()
-    object PickTomorrow : ViewMenuAction()
+    /** その日にやるものを選ぶ。0 が今日、1 が明日 */
+    data class PickDay(val daysAhead: Int) : ViewMenuAction()
     object ExpandAll : ViewMenuAction()
 }
 
@@ -131,7 +132,8 @@ object ViewMenu {
         )
 
         rows.add(ViewMenuRow.Section(BULK))
-        rows.add(ViewMenuRow.Action(ViewMenuAction.PickTomorrow, "明日やるものを選ぶ", opensDialog = true))
+        rows.add(ViewMenuRow.Action(ViewMenuAction.PickDay(0), "今日やるものを選ぶ", opensDialog = true))
+        rows.add(ViewMenuRow.Action(ViewMenuAction.PickDay(1), "明日やるものを選ぶ", opensDialog = true))
         rows.add(ViewMenuRow.Action(ViewMenuAction.BulkPlace, "場所をまとめて変える", opensDialog = true))
         rows.add(ViewMenuRow.Action(ViewMenuAction.CollapseAll, "すべて畳む"))
         rows.add(ViewMenuRow.Action(ViewMenuAction.ExpandAll, "すべて開く"))

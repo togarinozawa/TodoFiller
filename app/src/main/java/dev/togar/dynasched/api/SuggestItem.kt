@@ -9,7 +9,11 @@ data class SuggestItem(
     val title: String,
     val minutes: Int,
     val priority: Int,
-    val problems: Int      // material のとき、その枠でやる問数
+    val problems: Int,     // material のとき、その枠でやる問数
+    /** 締切まで何日か（教材だけ）。「なぜこれか」に出す */
+    val dueDays: Int? = null,
+    /** やる日を今日の分として決めた強さ（2 絶対 / 1 なるべく / 0） */
+    val wantToday: Int = 0
 ) {
     companion object {
         fun from(o: JSONObject): SuggestItem = SuggestItem(

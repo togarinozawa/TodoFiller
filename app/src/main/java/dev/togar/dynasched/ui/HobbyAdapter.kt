@@ -204,6 +204,9 @@ class HobbyAdapter(
         if (tags.isNotEmpty()) base.append("  $tags")
         val want = dev.togar.dynasched.data.Want.badge(item.wantDate, item.wantLevel)
         if (want.isNotEmpty() && !item.isCompleted) base.append("\n").append(want)
+        if (item.dueDate.isNotEmpty() && !item.isCompleted) {
+            base.append(if (want.isNotEmpty()) "  " else "\n").append("⏰ ").append(DueDateButton.label(item.dueDate))
+        }
         if (item.note.isNotBlank()) {
             val memo = item.note.replace("\n", " ").let {
                 if (it.length > 40) it.substring(0, 40) + "…" else it

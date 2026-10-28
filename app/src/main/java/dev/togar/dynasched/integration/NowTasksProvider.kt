@@ -20,13 +20,16 @@ import dev.togar.dynasched.data.NowTasks
  * 壊れても制限には響かない。読めなければ向こうはタスクを出さないだけ
  * （ドパチルの判定はスキマスに一切頼らない）。
  *
- * 配置を絞っていれば（タスク画面の「いまの絞り込みだけ配置する」）、それに当たるものだけを出す。
- * 「いまはこれに集中する」と決めた範囲の外を、警告画面で勧めないため。
+ * いまやるタブで絞り込んでいれば、それに当たるものだけを出す（タブと警告画面で違う物を言わない）。
+ * 並びは [dev.togar.dynasched.data.Ranking]（やる日 → 優先度と締切の近さ）。
  */
 class NowTasksProvider : ContentProvider() {
 
     companion object {
-        /** 読みに来る URI の末尾。`content://dev.togar.dynasched.nowtasks/now` */
+        /**
+         * 読みに来る URI の末尾。`content://dev.togar.dynasched.nowtasks/now`。
+         * ほかに /schedule /deadlines /remaining /day がある（[DopaFeed]）
+         */
         const val PATH = "now"
         const val DEFAULT_LIMIT = 3
         const val MAX_LIMIT = 10
@@ -45,10 +48,18 @@ class NowTasksProvider : ContentProvider() {
         if (!TrustedCallers.allowed(pkg, pkg?.let { TrustedCallers.certDigests(ctx, it) }.orEmpty())) {
             throw SecurityException("スキマスのタスクは登録された相手にしか読ませません: $pkg")
         }
-        if (uri.lastPathSegment != PATH) return null
+        when (uri.lastPathSegment) {
+            "schedule" -> return DopaFeed.schedule(ctx)
+            "deadlines" -> return DopaFeed.deadlines(ctx)
+            "remaining" -> return DopaFeed.remaining(ctx)
+            "day" -> return DopaFeed.day(ctx)
+            PATH -> Unit
+            else -> return null
+        }
         val limit = uri.getQueryParameter("limit")?.toIntOrNull()?.coerceIn(1, MAX_LIMIT) ?: DEFAULT_LIMIT
 
-        val now = NowTasks.pick(ctx, Prefs.placeFilter(ctx))
+        // いまやるタブと同じ物を出す（タブの絞り込みも同じものを使う）
+        val now = NowTasks.pick(ctx, Prefs.nowFilter(ctx))
         val cursor = MatrixCursor(COLUMNS)
         for (item in now.items.take(limit)) {
             cursor.addRow(arrayOf<Any?>(

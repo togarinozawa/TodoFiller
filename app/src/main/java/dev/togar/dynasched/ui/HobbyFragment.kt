@@ -225,7 +225,7 @@ class HobbyFragment : Fragment() {
     private fun openFilterPage() {
         parentFragmentManager.beginTransaction()
             .setCustomAnimations(R.anim.filter_enter, R.anim.filter_exit, R.anim.filter_enter, R.anim.filter_exit)
-            .add(R.id.container, TaskFilterPage())
+            .add(R.id.container, TaskFilterPage.forTasks())
             .addToBackStack(TaskFilterPage.RESULT)
             .commit()
     }
@@ -264,7 +264,7 @@ class HobbyFragment : Fragment() {
                 ViewMenuAction.GroupsLast ->
                     Prefs.setTaskGroupsLast(ctx, !Prefs.taskGroupsLast(ctx))
                 ViewMenuAction.BulkPlace -> { bulkPlace(); return@show }
-                ViewMenuAction.PickTomorrow -> { pickTomorrow(); return@show }
+                is ViewMenuAction.PickDay -> { pickDay(action.daysAhead); return@show }
                 ViewMenuAction.CollapseAll -> Prefs.setCollapsed(ctx, allParentIds())
                 ViewMenuAction.ExpandAll -> Prefs.setCollapsed(ctx, emptySet())
             }
@@ -928,18 +928,20 @@ class HobbyFragment : Fragment() {
         Toast.makeText(ctx, "今日の目標 ${p.goal}件に届きました", Toast.LENGTH_SHORT).show()
     }
 
-    // ---- 明日やるもの ----
+    // ---- 今日・明日やるもの ----
 
     /**
-     * 明日やるタスクをまとめて選ぶ。何時にやるかは決めない（配置に任せる）。
-     * 絞り込んでいればその中から選ぶ（「#英語」で絞ってから明日の分を選ぶ、のように）。
+     * その日にやるタスクをまとめて選ぶ（[daysAhead] 0 が今日、1 が明日）。何時にやるかは決めない（配置に任せる）。
+     * いま見えている範囲（グループのタブと絞り込み）の中から選ぶ。「#英語」で絞ってから今日の分を選ぶ、のように。
      */
-    private fun pickTomorrow() {
+    private fun pickDay(daysAhead: Int) {
         val ctx = requireContext()
-        val tomorrow = java.time.LocalDate.now().plusDays(1).toString()
+        val date = java.time.LocalDate.now().plusDays(daysAhead.toLong()).toString()
+        val dayName = if (daysAhead == 0) "今日" else "明日"
         val parents = loaded.mapNotNullTo(HashSet()) { it.parentId }
         val levels = dev.togar.dynasched.Priorities.all(ctx)
-        val items = filter.apply(loaded, levels).filter { it.id !in parents && !it.isCompleted }
+        val items = filter.apply(GroupTabs.apply(loaded, effectiveTab()), levels)
+            .filter { it.id !in parents && !it.isCompleted }
             .sortedByDescending { it.priority }
         if (items.isEmpty()) {
             Toast.makeText(ctx, "選べるタスクがありません", Toast.LENGTH_SHORT).show()
@@ -947,27 +949,28 @@ class HobbyFragment : Fragment() {
         }
         val labels = items.map { t ->
             val parent = dev.togar.dynasched.data.NowTasks.parentPath(loaded, t.id)
-            val other = if (t.wantDate.isNotEmpty() && t.wantDate != tomorrow)
+            val other = if (t.wantDate.isNotEmpty() && t.wantDate != date)
                 "（📌 ${dev.togar.dynasched.data.Want.dayLabel(t.wantDate)}）" else ""
             (if (parent.isNotEmpty()) "$parent › " else "") + t.name + other
         }
-        val picked = items.filter { it.wantDate == tomorrow }.mapTo(HashSet()) { it.id }
+        val picked = items.filter { it.wantDate == date }.mapTo(HashSet()) { it.id }
         val before = picked.toSet()
+        val narrowed = !filter.isEmpty || currentTab() != GroupTabs.ALL
         AlertDialog.Builder(ctx)
-            .setTitle(if (filter.isEmpty) "明日やるもの" else "明日やるもの（いまの絞り込みの中から）")
+            .setTitle(if (narrowed) "${dayName}やるもの（いま見えている中から）" else "${dayName}やるもの")
             .setMultiChoiceItems(labels.toTypedArray(), BooleanArray(items.size) { items[it].id in picked }) { _, i, on ->
                 if (on) picked.add(items[i].id) else picked.remove(items[i].id)
             }
             .setPositiveButton("次へ") { _, _ ->
                 val removed = before - picked
-                if (picked.isEmpty()) { saveTomorrow(emptySet(), removed, 0); return@setPositiveButton }
+                if (picked.isEmpty()) { saveDay(date, emptySet(), removed, 0); return@setPositiveButton }
                 AlertDialog.Builder(ctx)
                     .setTitle("${picked.size}件をどのくらいやる？")
                     .setItems(arrayOf(
                         "絶対（枠に入らなければ、空いている時間に入れる）",
-                        "なるべく（明日の枠に先に入れる。入らなければ次の日へ）"
+                        "なるべく（${dayName}の枠に先に入れる。入らなければ次の日へ）"
                     )) { _, i ->
-                        saveTomorrow(picked, removed,
+                        saveDay(date, picked, removed,
                             if (i == 0) dev.togar.dynasched.data.Want.MUST else dev.togar.dynasched.data.Want.PREFER)
                     }
                     .setNegativeButton("やめる", null)
@@ -977,13 +980,13 @@ class HobbyFragment : Fragment() {
             .show()
     }
 
-    private fun saveTomorrow(picked: Set<Long>, removed: Set<Long>, level: Int) {
+    /** 選んだ物をその日に決め、外した物は決めないに戻す。すぐ組み直してカレンダーに出す */
+    private fun saveDay(date: String, picked: Set<Long>, removed: Set<Long>, level: Int) {
         val app = requireContext().applicationContext
-        val tomorrow = java.time.LocalDate.now().plusDays(1).toString()
         Api.async({
             val repo = Repo.current(app)
             repo.setHobbyWant(app, removed, "", 0)
-            repo.setHobbyWant(app, picked, tomorrow, level)
+            repo.setHobbyWant(app, picked, date, level)
         }, {
             if (!isAdded) return@async
             load()
@@ -1137,9 +1140,12 @@ class HobbyFragment : Fragment() {
         // やる日。葉だけ（グループは配下ごとに決める。親に付けても配置されるのは葉なので）
         val isLeaf = loaded.none { it.parentId == item.id }
         val want = WantPickerView(ctx, item.wantDate, item.wantLevel)
+        val dueButton = DueDateButton(ctx, item.dueDate)
         if (isLeaf) {
             root.addView(label("やる日（何時かは配置に任せる）"))
             root.addView(want)
+            root.addView(label("締切（それまでに終わらせる日）"))
+            root.addView(dueButton)
         }
 
         root.addView(label("カレンダーの色"))
@@ -1206,6 +1212,8 @@ class HobbyFragment : Fragment() {
                 val wantChanged = isLeaf && (want.date != item.wantDate || want.level != item.wantLevel)
                 val wantDate = want.date
                 val wantLevel = want.level
+                val dueDate = dueButton.date
+                val dueChanged = isLeaf && dueDate != item.dueDate
                 // 配下へ配る値。チェックの状態は画面の側で読んでおく（ワーカーから画面に触らない）
                 val spreadPriority = if (spread["priority"]?.isChecked == true) priority else null
                 val spreadLocation = if (spread["location"]?.isChecked == true) location else null
@@ -1220,6 +1228,7 @@ class HobbyFragment : Fragment() {
                             appCtx, item.id, name, total, priority, location, note, color, tags
                         )
                         if (wantChanged) repo.setHobbyWant(appCtx, listOf(item.id), wantDate, wantLevel)
+                        if (dueChanged) repo.setHobbyDue(appCtx, item.id, dueDate)
                         if (spreadCount > 0) {
                             repo.applyToSubtree(
                                 appCtx, item.id,

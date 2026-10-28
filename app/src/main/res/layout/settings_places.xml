@@ -42,7 +42,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="「いまやること」と「暇なとき」は、この場所にいるものとして候補を出します。その日に手で場所を選べば、その日だけはそちらが優先です。"
+        android:text="カレンダータブで作る枠は、この場所の枠で始まります。「いまやる」と「暇なとき」も、この場所にいるものとして候補を出します（その日に手で場所を選べば、その日だけはそちらが優先）。"
         android:textColor="@color/on_bg_dim"
         android:textSize="12sp" />
 

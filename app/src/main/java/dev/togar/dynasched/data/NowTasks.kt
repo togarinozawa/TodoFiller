@@ -82,11 +82,26 @@ object NowTasks {
 
     fun internalKind(kind: String?): String = if (kind == KIND_STUDY) "material" else "hobby"
 
-    /** なぜこれか、の一言。警告画面で「なんでこれ？」と思わせないため。目安があれば添える */
+    /**
+     * なぜこれか、の一言。警告画面で「なんでこれ？」と思わせないため。
+     * 並べた理由（[Ranking]）の順に、効いているものを並べる。優先度は目安があれば添える
+     */
     fun reason(
         item: SuggestItem,
         levels: List<dev.togar.dynasched.PriorityLevel> = dev.togar.dynasched.Priorities.DEFAULT
-    ): String =
-        if (item.kind == "material") "予定（教材）"
-        else "優先度 " + dev.togar.dynasched.Priorities.levelOf(levels, item.priority).label
+    ): String {
+        val parts = ArrayList<String>()
+        when (item.wantToday) {
+            Want.MUST -> parts.add("今日やる（絶対）")
+            Want.PREFER -> parts.add("今日やる（なるべく）")
+        }
+        if (item.kind == "material") {
+            parts.add("予定（教材）")
+            item.dueDays?.let { parts.add(if (it <= 0) "締切は今日" else "締切まで${it}日") }
+        } else {
+            parts.add("優先度 " + dev.togar.dynasched.Priorities.levelOf(levels, item.priority).label)
+            item.dueDays?.let { parts.add(if (it <= 0) "締切は今日" else "締切まで${it}日") }
+        }
+        return parts.joinToString("・")
+    }
 }

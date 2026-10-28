@@ -222,15 +222,21 @@ class CalendarFragment : Fragment() {
 
     // ---- 枠 ----
 
+    /**
+     * 枠を作る。場所はその曜日のいつもの場所（設定の「場所」）で始める。
+     * 月曜を「寮」にしてあれば、月曜に作った枠は寮の枠になる。決めていない曜日は家
+     */
     private fun createSlot(dayIndex: Int, start: Int, end: Int) {
         val date = dates().getOrNull(dayIndex) ?: return
         val ctx = requireContext().applicationContext
+        val place = Prefs.basePlaceOn(ctx, date)
         Api.async({
             Repo.current(ctx).addSlot(ctx, Slot(date = date.toString(), startMin = start, endMin = end,
-                location = Places.HOME))
+                location = place))
         }, {
             if (!isAdded) return@async
-            Toast.makeText(requireContext(), "枠を作りました（押すと場所や毎週の設定）", Toast.LENGTH_SHORT).show()
+            val name = Places.name(Places.all(ctx), place)
+            Toast.makeText(requireContext(), "「$name」の枠を作りました（押すと場所や毎週の設定）", Toast.LENGTH_SHORT).show()
             load()
         }, {})
     }

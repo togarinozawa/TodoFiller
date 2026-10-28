@@ -34,7 +34,19 @@ class TaskFilterPage : Fragment() {
     companion object {
         /** 「絞り込む」を押した知らせ。中身は Prefs に書いてある */
         const val RESULT = "task_filter"
+        private const val ARG_FOR_NOW = "for_now"
+
+        /** タスク画面の絞り込み */
+        fun forTasks() = TaskFilterPage()
+
+        /**
+         * いまやるタブの絞り込み。場所の条件は出さない
+         * （いまやるは「いまいる場所」でもう絞っていて、場所はタブの 📍 で選び直す）
+         */
+        fun forNow() = TaskFilterPage().apply { arguments = bundleOf(ARG_FOR_NOW to true) }
     }
+
+    private val forNow: Boolean get() = arguments?.getBoolean(ARG_FOR_NOW) == true
 
     private var habit = TaskFilter.Habit.ALL
     private val places = HashSet<String>()
@@ -44,12 +56,13 @@ class TaskFilterPage : Fragment() {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val root = inflater.inflate(R.layout.fragment_task_filter, container, false)
         val ctx = requireContext()
-        val now = Prefs.taskFilter(ctx)
+        val now = if (forNow) Prefs.nowFilter(ctx) else Prefs.taskFilter(ctx)
         habit = now.habit
         places.addAll(now.places)
         priorities.addAll(now.priorities)
         tags.addAll(now.tags)
 
+        root.findViewById<TextView>(R.id.filterTitle).text = if (forNow) "いまやるの絞り込み" else "絞り込み"
         val body = root.findViewById<LinearLayout>(R.id.filterBody)
         val textInput = root.findViewById<EditText>(R.id.filterText)
         textInput.setText(now.text)
@@ -63,9 +76,11 @@ class TaskFilterPage : Fragment() {
         }
         drawHabit()
 
-        val placeGroup = section(body, "場所（いくつでも）")
-        for ((id, label) in Places.taskChoices(Places.all(ctx))) {
-            placeGroup.addView(toggle(label, places, id))
+        if (!forNow) {
+            val placeGroup = section(body, "場所（いくつでも）")
+            for ((id, label) in Places.taskChoices(Places.all(ctx))) {
+                placeGroup.addView(toggle(label, places, id))
+            }
         }
 
         val prioGroup = section(body, "優先度（いくつでも）")
@@ -88,10 +103,12 @@ class TaskFilterPage : Fragment() {
 
         root.findViewById<View>(R.id.filterBack).setOnClickListener { parentFragmentManager.popBackStack() }
         root.findViewById<View>(R.id.filterApply).setOnClickListener {
-            Prefs.setTaskFilter(ctx, TaskFilter(
+            val next = TaskFilter(
                 text = textInput.text.toString().trim(), habit = habit,
-                places = places.toSet(), priorities = priorities.toSet(), tags = tags.toSet()
-            ))
+                places = if (forNow) emptySet() else places.toSet(),
+                priorities = priorities.toSet(), tags = tags.toSet()
+            )
+            if (forNow) Prefs.setNowFilter(ctx, next) else Prefs.setTaskFilter(ctx, next)
             parentFragmentManager.setFragmentResult(RESULT, bundleOf())
             parentFragmentManager.popBackStack()
         }

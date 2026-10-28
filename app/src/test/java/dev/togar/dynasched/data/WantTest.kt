@@ -86,6 +86,16 @@ class WantTest {
     private val tue = LocalDate.of(2026, 9, 1)   // 火曜
 
     @Test
+    fun `カレンダーで作る枠は、その曜日のいつもの場所で始まる`() {
+        // 月曜を寮にしてあれば、月曜の枠は寮。決めていない曜日・消した場所は家
+        val mon = LocalDate.of(2026, 8, 31)
+        assertEquals("ryo", Prefs.basePlaceOn(ids, week, mon))
+        assertEquals("jikka", Prefs.basePlaceOn(ids, week, LocalDate.of(2026, 9, 5)))   // 土曜
+        assertEquals(Places.HOME, Prefs.basePlaceOn(ids, List(7) { "" }, mon))
+        assertEquals(Places.HOME, Prefs.basePlaceOn(ids, List(7) { "gone" }, mon))
+    }
+
+    @Test
     fun `手で選んでいなければ曜日の場所`() {
         assertEquals("ryo", Prefs.currentPlace(ids, week, "jikka", "2026-08-30", tue))
     }

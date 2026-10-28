@@ -28,6 +28,8 @@ data class HobbyItem(
     val wantDate: String = "",
     /** やる日の強さ。0 決めない / 1 なるべく / 2 絶対 */
     val wantLevel: Int = 0,
+    /** 締切（yyyy-MM-dd）。空なら無し */
+    val dueDate: String = "",
     var level: Int = 0,
     var hasChildren: Boolean = false  // 子を持つタスクはチェックボックス非表示（葉のみ完了可能）
 ) {
